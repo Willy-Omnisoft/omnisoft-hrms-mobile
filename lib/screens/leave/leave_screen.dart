@@ -1,0 +1,308 @@
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import '../../core/theme.dart';
+import '../../models/leave_type.dart';
+import '../../services/omni_mobile_api.dart';
+import '../../services/session_service.dart';
+
+class LeaveScreen extends StatefulWidget {
+  const LeaveScreen({super.key});
+
+  @override
+  State<LeaveScreen> createState() => _LeaveScreenState();
+}
+
+class _LeaveScreenState extends State<LeaveScreen> {
+  List<LeaveType> _types = [];
+  bool _loading = true;
+  String? _error;
+
+  OmniMobileApi _api(SessionService s) => OmniMobileApi(
+        baseUrl: s.clientUrl,
+        db: s.clientDb,
+        token: s.token,
+      );
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTypes());
+  }
+
+  Future<void> _loadTypes() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final session = context.read<SessionService>();
+      _types = await _api(session).getLeaveTypes();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _openApplyForm(LeaveType type) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _ApplyLeaveSheet(leaveType: type),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('Leave')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _error != null
+              ? Center(child: Text(_error!))
+              : RefreshIndicator(
+                  onRefresh: _loadTypes,
+                  child: _buildList(),
+                ),
+    );
+  }
+
+  Widget _buildList() {
+    // Group by category
+    final groups = <String, List<LeaveType>>{};
+    for (final t in _types) {
+      groups.putIfAbsent(t.mobileCategory, () => []).add(t);
+    }
+    final categoryOrder = [
+      'annual',
+      'medical',
+      'family',
+      'unpaid',
+      'compassionate',
+      'other'
+    ];
+    final sorted = categoryOrder.where((c) => groups.containsKey(c)).toList();
+
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        for (final cat in sorted) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 12, bottom: 8, left: 4),
+            child: Text(
+              _categoryLabel(cat),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: AppTheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+          ),
+          for (final type in groups[cat]!)
+            Card(
+              child: ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: AppTheme.primary.withOpacity(0.1),
+                  child: Icon(_categoryIcon(cat), color: AppTheme.primary),
+                ),
+                title: Text(type.name),
+                subtitle: type.mobileRequiresDocument
+                    ? const Text('Document required',
+                        style: TextStyle(fontSize: 12, color: AppTheme.error))
+                    : null,
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _openApplyForm(type),
+              ),
+            ),
+        ],
+      ],
+    );
+  }
+
+  String _categoryLabel(String cat) {
+    switch (cat) {
+      case 'annual':
+        return 'Annual';
+      case 'medical':
+        return 'Medical';
+      case 'family':
+        return 'Family';
+      case 'unpaid':
+        return 'Unpaid';
+      case 'compassionate':
+        return 'Compassionate';
+      default:
+        return 'Other';
+    }
+  }
+
+  IconData _categoryIcon(String cat) {
+    switch (cat) {
+      case 'annual':
+        return Icons.beach_access;
+      case 'medical':
+        return Icons.local_hospital;
+      case 'family':
+        return Icons.family_restroom;
+      case 'unpaid':
+        return Icons.money_off;
+      case 'compassionate':
+        return Icons.volunteer_activism;
+      default:
+        return Icons.event;
+    }
+  }
+}
+
+class _ApplyLeaveSheet extends StatefulWidget {
+  final LeaveType leaveType;
+  const _ApplyLeaveSheet({required this.leaveType});
+
+  @override
+  State<_ApplyLeaveSheet> createState() => _ApplyLeaveSheetState();
+}
+
+class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
+  DateTime _dateFrom = DateTime.now().add(const Duration(days: 1));
+  DateTime _dateTo = DateTime.now().add(const Duration(days: 1));
+  final _reasonController = TextEditingController();
+  bool _submitting = false;
+
+  Future<void> _pickDate(bool isFrom) async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: isFrom ? _dateFrom : _dateTo,
+      firstDate: DateTime.now(),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+    );
+    if (picked != null) {
+      setState(() {
+        if (isFrom) {
+          _dateFrom = picked;
+          if (_dateTo.isBefore(_dateFrom)) _dateTo = _dateFrom;
+        } else {
+          _dateTo = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    setState(() => _submitting = true);
+    try {
+      final session = context.read<SessionService>();
+      final api = OmniMobileApi(
+        baseUrl: session.clientUrl,
+        db: session.clientDb,
+        token: session.token,
+      );
+      final result = await api.applyLeave(
+        holidayStatusId: widget.leaveType.id,
+        dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
+        dateTo: DateFormat('yyyy-MM-dd').format(_dateTo),
+        reason: _reasonController.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop();
+
+      var msg = 'Leave submitted successfully';
+      if (result['document_required'] == true) {
+        msg +=
+            '\n\nSupporting document required. Upload will be available in next version.';
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), backgroundColor: AppTheme.primary),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error: $e'), backgroundColor: AppTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('dd MMM yyyy');
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.leaveType.name,
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700)),
+          if (widget.leaveType.mobileRequiresDocument)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                'Supporting document required. Upload will be available in next version.',
+                style: TextStyle(fontSize: 12, color: AppTheme.error),
+              ),
+            ),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today, size: 16),
+                  label: Text(fmt.format(_dateFrom)),
+                  onPressed: () => _pickDate(true),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 8),
+                child: Text('to'),
+              ),
+              Expanded(
+                child: OutlinedButton.icon(
+                  icon: const Icon(Icons.calendar_today, size: 16),
+                  label: Text(fmt.format(_dateTo)),
+                  onPressed: () => _pickDate(false),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reasonController,
+            decoration: const InputDecoration(
+              labelText: 'Reason (optional)',
+              prefixIcon: Icon(Icons.notes),
+            ),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Submit Leave'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
