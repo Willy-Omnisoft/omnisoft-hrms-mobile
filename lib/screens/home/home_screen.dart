@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants.dart';
+import '../../core/datetime_utils.dart';
 import '../../core/theme.dart';
 import '../../models/attendance_status.dart';
 import '../../services/omni_mobile_api.dart';
@@ -187,7 +188,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
                 if (s.currentCheckInTime != null) ...[
                   const SizedBox(height: 4),
-                  Text('Since ${_formatTime(s.currentCheckInTime!)}',
+                  Text('Since ${DateTimeUtils.formatLocalTime(s.currentCheckInTime!)}',
                       style: Theme.of(context).textTheme.bodySmall),
                 ],
                 const SizedBox(height: 16),
@@ -198,7 +199,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         'Hours Today', s.hoursToday.toStringAsFixed(1)),
                     if (s.lastCheckInTime != null)
                       _statChip(
-                          'Last Check-in', _formatTime(s.lastCheckInTime!)),
+                          'Last Check-in', DateTimeUtils.formatLocalTime(s.lastCheckInTime!)),
                   ],
                 ),
               ],
@@ -285,14 +286,4 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  String _formatTime(String dt) {
-    try {
-      final parsed = DateTime.parse(dt);
-      final local = parsed.toLocal();
-      return '${local.hour.toString().padLeft(2, '0')}:'
-          '${local.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return dt;
-    }
-  }
 }
