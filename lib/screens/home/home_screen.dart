@@ -78,9 +78,16 @@ class _HomeScreenState extends State<HomeScreen> {
     try {
       final session = context.read<SessionService>();
       final api = _api(session);
-      final pos = await _getPosition();
-      final lat = pos?.latitude ?? DevConstants.fallbackLatitude;
-      final lng = pos?.longitude ?? DevConstants.fallbackLongitude;
+      double lat;
+      double lng;
+      if (DevConstants.useDevLocation) {
+        lat = DevConstants.fallbackLatitude;
+        lng = DevConstants.fallbackLongitude;
+      } else {
+        final pos = await _getPosition();
+        lat = pos?.latitude ?? DevConstants.fallbackLatitude;
+        lng = pos?.longitude ?? DevConstants.fallbackLongitude;
+      }
 
       if (_status?.checkedIn == true) {
         await api.checkOut(
@@ -239,13 +246,26 @@ class _HomeScreenState extends State<HomeScreen> {
         Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.gps_fixed, size: 16, color: AppTheme.outline),
+            Icon(
+              DevConstants.useDevLocation
+                  ? Icons.developer_mode
+                  : Icons.gps_fixed,
+              size: 16,
+              color: DevConstants.useDevLocation
+                  ? Colors.orange
+                  : AppTheme.outline,
+            ),
             const SizedBox(width: 4),
-            Text('GPS Ready',
-                style: Theme.of(context)
-                    .textTheme
-                    .bodySmall
-                    ?.copyWith(color: AppTheme.outline)),
+            Text(
+              DevConstants.useDevLocation
+                  ? 'DEV location active'
+                  : 'GPS Ready',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: DevConstants.useDevLocation
+                        ? Colors.orange
+                        : AppTheme.outline,
+                  ),
+            ),
           ],
         ),
       ],

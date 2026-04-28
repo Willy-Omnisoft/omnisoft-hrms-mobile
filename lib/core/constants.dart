@@ -7,6 +7,10 @@ class DevConstants {
       'vTZnZiT7Dl0JBYNfwB8pV7oqqbS0gN73N3ZpiUs0nOk';
   static const double fallbackLatitude = 1.2780;
   static const double fallbackLongitude = 103.8450;
+
+  /// DEV ONLY — when true, always use fallback coordinates
+  /// instead of real GPS. Set to false for production builds.
+  static const bool useDevLocation = true;
 }
 
 class AppConstants {
