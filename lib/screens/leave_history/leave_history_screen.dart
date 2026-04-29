@@ -9,23 +9,23 @@ class LeaveHistoryScreen extends StatefulWidget {
   const LeaveHistoryScreen({super.key});
 
   @override
-  State<LeaveHistoryScreen> createState() => _LeaveHistoryScreenState();
+  State<LeaveHistoryScreen> createState() => LeaveHistoryScreenState();
 }
 
-class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
+class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
   List<LeaveRecord> _leaves = [];
-  bool _loading = true;
+  bool refreshing = true;
   String? _error;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+    WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
   }
 
-  Future<void> _load() async {
+  Future<void> refresh() async {
     setState(() {
-      _loading = true;
+      refreshing = true;
       _error = null;
     });
     try {
@@ -39,7 +39,7 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     } catch (e) {
       _error = e.toString();
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => refreshing = false);
     }
   }
 
@@ -61,12 +61,12 @@ class _LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Leave History')),
-      body: _loading
+      body: refreshing
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text(_error!))
               : RefreshIndicator(
-                  onRefresh: _load,
+                  onRefresh: refresh,
                   child: _leaves.isEmpty
                       ? ListView(children: const [
                           SizedBox(height: 100),

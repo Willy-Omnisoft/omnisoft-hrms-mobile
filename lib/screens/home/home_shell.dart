@@ -14,12 +14,28 @@ class HomeShell extends StatefulWidget {
 class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
-  final _screens = const [
-    HomeScreen(),
-    LeaveScreen(),
-    LeaveHistoryScreen(),
-    ProfileScreen(),
-  ];
+  final _homeKey = GlobalKey<HomeScreenState>();
+  final _historyKey = GlobalKey<LeaveHistoryScreenState>();
+
+  late final List<Widget> _screens;
+
+  @override
+  void initState() {
+    super.initState();
+    _screens = [
+      HomeScreen(key: _homeKey),
+      const LeaveScreen(),
+      LeaveHistoryScreen(key: _historyKey),
+      const ProfileScreen(),
+    ];
+  }
+
+  void _onTabTap(int i) {
+    setState(() => _index = i);
+    // Refresh data when switching to these tabs
+    if (i == 0) _homeKey.currentState?.refresh();
+    if (i == 2) _historyKey.currentState?.refresh();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -27,7 +43,7 @@ class _HomeShellState extends State<HomeShell> {
       body: IndexedStack(index: _index, children: _screens),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _index,
-        onTap: (i) => setState(() => _index = i),
+        onTap: _onTabTap,
         items: const [
           BottomNavigationBarItem(
             icon: Icon(Icons.home_rounded),

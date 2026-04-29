@@ -13,10 +13,10 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<HomeScreen> createState() => HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class HomeScreenState extends State<HomeScreen> {
   AttendanceStatus? _status;
   bool _loading = true;
   String? _error;
@@ -31,10 +31,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+    WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
   }
 
-  Future<void> _refresh() async {
+  Future<void> refresh() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -97,7 +97,7 @@ class _HomeScreenState extends State<HomeScreen> {
         await api.checkIn(
             latitude: lat, longitude: lng, deviceId: 'flutter-app');
       }
-      await _refresh();
+      await refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -127,7 +127,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text(AppConstants.appName)),
       body: RefreshIndicator(
-        onRefresh: _refresh,
+        onRefresh: refresh,
         child: ListView(
           padding: const EdgeInsets.all(24),
           children: [
@@ -153,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 12),
             Text(_error!, textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            ElevatedButton(onPressed: _refresh, child: const Text('Retry')),
+            ElevatedButton(onPressed: refresh, child: const Text('Retry')),
           ],
         ),
       ),
