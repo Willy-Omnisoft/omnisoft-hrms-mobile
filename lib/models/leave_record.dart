@@ -6,6 +6,10 @@ class LeaveRecord {
   final double numberOfDays;
   final String state;
   final String reason;
+  final double? allocationTotal;
+  final double? allocationTaken;
+  final double? allocationRemaining;
+  final bool requiresAllocation;
 
   LeaveRecord({
     required this.id,
@@ -15,6 +19,10 @@ class LeaveRecord {
     required this.numberOfDays,
     required this.state,
     this.reason = '',
+    this.allocationTotal,
+    this.allocationTaken,
+    this.allocationRemaining,
+    this.requiresAllocation = false,
   });
 
   factory LeaveRecord.fromJson(Map<String, dynamic> json) {
@@ -26,6 +34,10 @@ class LeaveRecord {
       numberOfDays: (json['number_of_days'] ?? 0).toDouble(),
       state: json['state'] ?? '',
       reason: json['reason'] ?? '',
+      allocationTotal: (json['allocation_total'] as num?)?.toDouble(),
+      allocationTaken: (json['allocation_taken'] as num?)?.toDouble(),
+      allocationRemaining: (json['allocation_remaining'] as num?)?.toDouble(),
+      requiresAllocation: json['requires_allocation'] == true,
     );
   }
 
