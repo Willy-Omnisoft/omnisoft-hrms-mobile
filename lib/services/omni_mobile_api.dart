@@ -89,6 +89,8 @@ class OmniMobileApi {
     String reason = '',
     String? dateFromPeriod,
     String? dateToPeriod,
+    double? hourFrom,
+    double? hourTo,
   }) async {
     return _post('/leave/apply', {
       'holiday_status_id': holidayStatusId,
@@ -97,6 +99,8 @@ class OmniMobileApi {
       'reason': reason,
       if (dateFromPeriod != null) 'date_from_period': dateFromPeriod,
       if (dateToPeriod != null) 'date_to_period': dateToPeriod,
+      if (hourFrom != null) 'hour_from': hourFrom,
+      if (hourTo != null) 'hour_to': hourTo,
     });
   }
 
@@ -125,6 +129,8 @@ class OmniMobileApi {
     required String reason,
     String? dateFromPeriod,
     String? dateToPeriod,
+    double? hourFrom,
+    double? hourTo,
   }) async {
     return _post('/leave/modify', {
       'leave_id': leaveId,
@@ -133,6 +139,8 @@ class OmniMobileApi {
       'reason': reason,
       if (dateFromPeriod != null) 'date_from_period': dateFromPeriod,
       if (dateToPeriod != null) 'date_to_period': dateToPeriod,
+      if (hourFrom != null) 'hour_from': hourFrom,
+      if (hourTo != null) 'hour_to': hourTo,
     });
   }
 }

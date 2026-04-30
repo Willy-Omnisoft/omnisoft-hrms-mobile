@@ -171,11 +171,24 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   DateTime _dateTo = DateTime.now().add(const Duration(days: 1));
   String _fromPeriod = 'am';
   String _toPeriod = 'pm';
+  TimeOfDay _hourFrom = const TimeOfDay(hour: 9, minute: 0);
+  TimeOfDay _hourTo = const TimeOfDay(hour: 17, minute: 0);
   final _reasonController = TextEditingController();
   bool _submitting = false;
   String? _error;
 
   bool get _isHalfDay => widget.leaveType.requestUnit == 'half_day';
+  bool get _isHourly => widget.leaveType.requestUnit == 'hour';
+
+  double _todToFloat(TimeOfDay t) => t.hour + t.minute / 60.0;
+  double get _hourCount => _todToFloat(_hourTo) - _todToFloat(_hourFrom);
+
+  String get _hourLabel {
+    final h = _hourCount;
+    return h == h.roundToDouble()
+        ? '${h.toInt()}h'
+        : '${h.toStringAsFixed(1)}h';
+  }
 
   bool get _isSameDate =>
       _dateFrom.year == _dateTo.year &&
@@ -204,6 +217,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
 
   /// Half-day mode rejects pm→am on the same date (would be 0 days).
   bool get _periodValid {
+    if (_isHourly) return _hourCount > 0;
     if (!_isHalfDay) return true;
     if (_isSameDate && _fromPeriod == 'pm' && _toPeriod == 'am') return false;
     return _dayCount > 0;
@@ -212,6 +226,22 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   Future<void> _pickRange() async {
     final today = DateTime.now();
     final firstDate = DateTime(today.year, today.month, today.day);
+    if (_isHourly) {
+      final picked = await showDatePicker(
+        context: context,
+        initialDate: _dateFrom,
+        firstDate: firstDate,
+        lastDate: firstDate.add(const Duration(days: 365)),
+      );
+      if (picked != null) {
+        setState(() {
+          _dateFrom = picked;
+          _dateTo = picked;
+          _error = null;
+        });
+      }
+      return;
+    }
     final picked = await showDialog<DateTimeRange>(
       context: context,
       builder: (_) => RangePickerDialog(
@@ -230,10 +260,28 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
     }
   }
 
+  Future<void> _pickTime(bool isFrom) async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: isFrom ? _hourFrom : _hourTo,
+    );
+    if (picked != null) {
+      setState(() {
+        if (isFrom) {
+          _hourFrom = picked;
+        } else {
+          _hourTo = picked;
+        }
+        _error = null;
+      });
+    }
+  }
+
   Future<void> _submit() async {
     if (!_periodValid) {
-      setState(() => _error =
-          'Afternoon → Morning on the same date is not a valid range.');
+      setState(() => _error = _isHourly
+          ? 'End time must be after start time.'
+          : 'Afternoon → Morning on the same date is not a valid range.');
       return;
     }
     setState(() {
@@ -250,10 +298,13 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
       final result = await api.applyLeave(
         holidayStatusId: widget.leaveType.id,
         dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
-        dateTo: DateFormat('yyyy-MM-dd').format(_dateTo),
+        dateTo: DateFormat('yyyy-MM-dd').format(
+            _isHourly ? _dateFrom : _dateTo),
         reason: _reasonController.text.trim(),
         dateFromPeriod: _isHalfDay ? _fromPeriod : null,
         dateToPeriod: _isHalfDay ? _toPeriod : null,
+        hourFrom: _isHourly ? _todToFloat(_hourFrom) : null,
+        hourTo: _isHourly ? _todToFloat(_hourTo) : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -282,6 +333,47 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
       return 'Not enough allocation balance for this request.';
     }
     return raw.replaceFirst(RegExp(r'^Exception: '), '');
+  }
+
+  Widget _timeBox({
+    required String label,
+    required TimeOfDay time,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          border: Border.all(color: AppTheme.outline),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.schedule, size: 18, color: AppTheme.primary),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(label,
+                      style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.onSurfaceVariant)),
+                  const SizedBox(height: 2),
+                  Text(
+                    time.format(context),
+                    style: const TextStyle(
+                        fontSize: 14, fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _periodRow({
@@ -373,13 +465,15 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Leave dates',
+                        Text(_isHourly ? 'Leave date' : 'Leave dates',
                             style: TextStyle(
                                 fontSize: 12,
                                 color: AppTheme.onSurfaceVariant)),
                         const SizedBox(height: 2),
                         Text(
-                          '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  $_dayCountLabel',
+                          _isHourly
+                              ? '${fmt.format(_dateFrom)}  ·  $_hourLabel'
+                              : '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  $_dayCountLabel',
                           style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w600),
                         ),
@@ -391,6 +485,24 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
               ),
             ),
           ),
+          if (_isHourly) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: _timeBox(
+                      label: 'From', time: _hourFrom,
+                      onTap: () => _pickTime(true)),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _timeBox(
+                      label: 'To', time: _hourTo,
+                      onTap: () => _pickTime(false)),
+                ),
+              ],
+            ),
+          ],
           if (_isHalfDay) ...[
             const SizedBox(height: 16),
             _periodRow(

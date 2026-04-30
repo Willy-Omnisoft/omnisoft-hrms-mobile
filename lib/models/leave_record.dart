@@ -14,6 +14,9 @@ class LeaveRecord {
   final String requestUnit;
   final String? dateFromPeriod;
   final String? dateToPeriod;
+  final double? hourFrom;
+  final double? hourTo;
+  final double numberOfHours;
 
   LeaveRecord({
     required this.id,
@@ -31,6 +34,9 @@ class LeaveRecord {
     this.requestUnit = 'day',
     this.dateFromPeriod,
     this.dateToPeriod,
+    this.hourFrom,
+    this.hourTo,
+    this.numberOfHours = 0,
   });
 
   factory LeaveRecord.fromJson(Map<String, dynamic> json) {
@@ -50,15 +56,26 @@ class LeaveRecord {
       requestUnit: json['request_unit'] ?? 'day',
       dateFromPeriod: json['date_from_period']?.toString(),
       dateToPeriod: json['date_to_period']?.toString(),
+      hourFrom: (json['hour_from'] as num?)?.toDouble(),
+      hourTo: (json['hour_to'] as num?)?.toDouble(),
+      numberOfHours: (json['number_of_hours'] ?? 0).toDouble(),
     );
   }
 
   String get daysLabel {
+    if (requestUnit == 'hour') {
+      final h = numberOfHours;
+      return h == h.roundToDouble()
+          ? '${h.toInt()}h'
+          : '${h.toStringAsFixed(1)}h';
+    }
     final n = numberOfDays;
     return n == n.roundToDouble()
         ? '${n.toInt()}d'
         : '${n.toStringAsFixed(1)}d';
   }
+
+  String get allocationUnit => requestUnit == 'hour' ? 'hours' : 'days';
 
   static bool _parseBool(dynamic v) {
     if (v is bool) return v;
