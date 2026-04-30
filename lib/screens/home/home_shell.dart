@@ -18,6 +18,7 @@ class _HomeShellState extends State<HomeShell> {
   int _index = 0;
 
   final _homeKey = GlobalKey<HomeScreenState>();
+  final _leaveKey = GlobalKey<LeaveScreenState>();
   final _historyKey = GlobalKey<LeaveHistoryScreenState>();
 
   late final List<Widget> _screens;
@@ -27,7 +28,7 @@ class _HomeShellState extends State<HomeShell> {
     super.initState();
     _screens = [
       HomeScreen(key: _homeKey),
-      const LeaveScreen(),
+      LeaveScreen(key: _leaveKey),
       LeaveHistoryScreen(key: _historyKey),
       const ProfileScreen(),
     ];
@@ -41,6 +42,7 @@ class _HomeShellState extends State<HomeShell> {
     setState(() => _index = i);
     // Refresh data when switching to these tabs
     if (i == 0) _homeKey.currentState?.refresh();
+    if (i == 1) _leaveKey.currentState?.refresh();
     if (i == 2) _historyKey.currentState?.refresh();
   }
 

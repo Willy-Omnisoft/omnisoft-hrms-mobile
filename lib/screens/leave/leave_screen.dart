@@ -14,10 +14,10 @@ class LeaveScreen extends StatefulWidget {
   const LeaveScreen({super.key});
 
   @override
-  State<LeaveScreen> createState() => _LeaveScreenState();
+  State<LeaveScreen> createState() => LeaveScreenState();
 }
 
-class _LeaveScreenState extends State<LeaveScreen> {
+class LeaveScreenState extends State<LeaveScreen> {
   List<LeaveType> _types = [];
   bool _loading = true;
   String? _error;
@@ -31,10 +31,10 @@ class _LeaveScreenState extends State<LeaveScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _loadTypes());
+    WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
   }
 
-  Future<void> _loadTypes() async {
+  Future<void> refresh() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -69,7 +69,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
           : _error != null
               ? Center(child: Text(_error!))
               : RefreshIndicator(
-                  onRefresh: _loadTypes,
+                  onRefresh: refresh,
                   child: _buildList(),
                 ),
     );
