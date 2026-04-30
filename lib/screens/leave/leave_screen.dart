@@ -171,21 +171,23 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   final _reasonController = TextEditingController();
   bool _submitting = false;
 
-  Future<void> _pickDate(bool isFrom) async {
-    final picked = await showDatePicker(
+  int get _dayCount => _dateTo.difference(_dateFrom).inDays + 1;
+
+  Future<void> _pickRange() async {
+    final today = DateTime.now();
+    final firstDate = DateTime(today.year, today.month, today.day);
+    final picked = await showDateRangePicker(
       context: context,
-      initialDate: isFrom ? _dateFrom : _dateTo,
-      firstDate: DateTime.now(),
-      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(start: _dateFrom, end: _dateTo),
+      firstDate: firstDate,
+      lastDate: firstDate.add(const Duration(days: 365)),
+      helpText: 'Select leave dates',
+      saveText: 'Done',
     );
     if (picked != null) {
       setState(() {
-        if (isFrom) {
-          _dateFrom = picked;
-          if (_dateTo.isBefore(_dateFrom)) _dateTo = _dateFrom;
-        } else {
-          _dateTo = picked;
-        }
+        _dateFrom = picked.start;
+        _dateTo = picked.end;
       });
     }
   }
@@ -256,27 +258,42 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
               ),
             ),
           const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text(fmt.format(_dateFrom)),
-                  onPressed: () => _pickDate(true),
-                ),
+          InkWell(
+            onTap: _pickRange,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.outline),
+                borderRadius: BorderRadius.circular(12),
               ),
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Text('to'),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today,
+                      size: 18, color: AppTheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Leave dates',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.onSurfaceVariant)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  ${_dayCount}d',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: AppTheme.outline),
+                ],
               ),
-              Expanded(
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.calendar_today, size: 16),
-                  label: Text(fmt.format(_dateTo)),
-                  onPressed: () => _pickDate(false),
-                ),
-              ),
-            ],
+            ),
           ),
           const SizedBox(height: 16),
           TextField(
