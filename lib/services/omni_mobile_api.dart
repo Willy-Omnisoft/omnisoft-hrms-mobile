@@ -87,12 +87,16 @@ class OmniMobileApi {
     required String dateFrom,
     required String dateTo,
     String reason = '',
+    String? dateFromPeriod,
+    String? dateToPeriod,
   }) async {
     return _post('/leave/apply', {
       'holiday_status_id': holidayStatusId,
       'date_from': dateFrom,
       'date_to': dateTo,
       'reason': reason,
+      if (dateFromPeriod != null) 'date_from_period': dateFromPeriod,
+      if (dateToPeriod != null) 'date_to_period': dateToPeriod,
     });
   }
 

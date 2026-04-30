@@ -169,11 +169,45 @@ class _ApplyLeaveSheet extends StatefulWidget {
 class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   DateTime _dateFrom = DateTime.now().add(const Duration(days: 1));
   DateTime _dateTo = DateTime.now().add(const Duration(days: 1));
+  String _fromPeriod = 'am';
+  String _toPeriod = 'pm';
   final _reasonController = TextEditingController();
   bool _submitting = false;
   String? _error;
 
-  int get _dayCount => _dateTo.difference(_dateFrom).inDays + 1;
+  bool get _isHalfDay => widget.leaveType.requestUnit == 'half_day';
+
+  bool get _isSameDate =>
+      _dateFrom.year == _dateTo.year &&
+      _dateFrom.month == _dateTo.month &&
+      _dateFrom.day == _dateTo.day;
+
+  /// Days computed to match Odoo's hr.leave half-day arithmetic.
+  double get _dayCount {
+    final base = _dateTo.difference(_dateFrom).inDays + 1;
+    if (!_isHalfDay) return base.toDouble();
+    if (_isSameDate) {
+      return _fromPeriod == _toPeriod ? 0.5 : 1.0;
+    }
+    var d = base.toDouble();
+    if (_fromPeriod == 'pm') d -= 0.5;
+    if (_toPeriod == 'am') d -= 0.5;
+    return d;
+  }
+
+  String get _dayCountLabel {
+    final n = _dayCount;
+    return n == n.roundToDouble()
+        ? '${n.toInt()}d'
+        : '${n.toStringAsFixed(1)}d';
+  }
+
+  /// Half-day mode rejects pm→am on the same date (would be 0 days).
+  bool get _periodValid {
+    if (!_isHalfDay) return true;
+    if (_isSameDate && _fromPeriod == 'pm' && _toPeriod == 'am') return false;
+    return _dayCount > 0;
+  }
 
   Future<void> _pickRange() async {
     final today = DateTime.now();
@@ -197,6 +231,11 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   }
 
   Future<void> _submit() async {
+    if (!_periodValid) {
+      setState(() => _error =
+          'Afternoon → Morning on the same date is not a valid range.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -213,6 +252,8 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
         dateTo: DateFormat('yyyy-MM-dd').format(_dateTo),
         reason: _reasonController.text.trim(),
+        dateFromPeriod: _isHalfDay ? _fromPeriod : null,
+        dateToPeriod: _isHalfDay ? _toPeriod : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -241,6 +282,48 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
       return 'Not enough allocation balance for this request.';
     }
     return raw.replaceFirst(RegExp(r'^Exception: '), '');
+  }
+
+  Widget _periodRow({
+    required String label,
+    required String value,
+    required ValueChanged<String> onChanged,
+  }) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 110,
+          child: Text(label,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: AppTheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500)),
+        ),
+        Expanded(
+          child: SegmentedButton<String>(
+            segments: const [
+              ButtonSegment(
+                value: 'am',
+                label: Text('Morning'),
+                icon: Icon(Icons.wb_sunny_outlined, size: 16),
+              ),
+              ButtonSegment(
+                value: 'pm',
+                label: Text('Afternoon'),
+                icon: Icon(Icons.wb_twilight, size: 16),
+              ),
+            ],
+            selected: {value},
+            onSelectionChanged: (s) => onChanged(s.first),
+            style: ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              textStyle: WidgetStateProperty.all(
+                  const TextStyle(fontSize: 12)),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -296,7 +379,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
                                 color: AppTheme.onSurfaceVariant)),
                         const SizedBox(height: 2),
                         Text(
-                          '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  ${_dayCount}d',
+                          '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  $_dayCountLabel',
                           style: const TextStyle(
                               fontSize: 14, fontWeight: FontWeight.w600),
                         ),
@@ -308,6 +391,26 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
               ),
             ),
           ),
+          if (_isHalfDay) ...[
+            const SizedBox(height: 16),
+            _periodRow(
+              label: 'Start period',
+              value: _fromPeriod,
+              onChanged: (v) => setState(() {
+                _fromPeriod = v;
+                _error = null;
+              }),
+            ),
+            const SizedBox(height: 12),
+            _periodRow(
+              label: 'End period',
+              value: _toPeriod,
+              onChanged: (v) => setState(() {
+                _toPeriod = v;
+                _error = null;
+              }),
+            ),
+          ],
           const SizedBox(height: 16),
           TextField(
             controller: _reasonController,
