@@ -211,7 +211,7 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                   ),
                   _detailRow(
                     'Used',
-                    '${_fmtDays(r.allocationTaken ?? 0)} days',
+                    '${_fmtDays(r.allocationTotal! - (r.allocationRemaining ?? 0))} days',
                   ),
                   _detailRow(
                     'Remaining',
@@ -280,7 +280,8 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
 
   Widget _balanceBar(LeaveRecord r) {
     final total = r.allocationTotal ?? 0;
-    final taken = r.allocationTaken ?? 0;
+    final remaining = r.allocationRemaining ?? 0;
+    final taken = total - remaining;
     final fraction = total > 0 ? (taken / total).clamp(0.0, 1.0) : 0.0;
     return ClipRRect(
       borderRadius: BorderRadius.circular(4),
