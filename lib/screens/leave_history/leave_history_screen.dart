@@ -7,6 +7,7 @@ import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auto_pickers.dart';
 import '../../widgets/document_picker_field.dart';
+import '../../widgets/file_viewer.dart';
 import '../../widgets/range_picker_dialog.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
@@ -104,6 +105,18 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _viewHistoryAttachment(LeaveAttachment a) async {
+    try {
+      final res = await _api().getAttachment(a.id);
+      final dataB64 = (res['data_b64'] ?? '').toString();
+      if (dataB64.isEmpty) throw Exception('empty file');
+      final err = await openBase64File(name: a.name, dataB64: dataB64);
+      if (err != null && mounted) showFileViewError(context, err);
+    } catch (e) {
+      if (mounted) showFileViewError(context, e.toString());
     }
   }
 
@@ -227,22 +240,30 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                 if (r.attachments.isNotEmpty) ...[
                   const SizedBox(height: 8),
                   for (final a in r.attachments)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Row(
-                        children: [
-                          Icon(Icons.description_outlined,
-                              size: 16, color: AppTheme.primary),
-                          const SizedBox(width: 6),
-                          Expanded(
-                            child: Text(
-                              '${a.name} · ${a.sizeLabel}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 13),
+                    InkWell(
+                      onTap: () => _viewHistoryAttachment(a),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          children: [
+                            Icon(Icons.description_outlined,
+                                size: 16, color: AppTheme.primary),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                '${a.name} · ${a.sizeLabel}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  color: AppTheme.primary,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: AppTheme.primary,
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
                 ],
@@ -400,6 +421,8 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   TimeOfDay _hourFrom = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _hourTo = const TimeOfDay(hour: 17, minute: 0);
   PickedDocument? _document;
+  late List<LeaveAttachment> _existingAttachments;
+  final Set<int> _busyAttachments = {};
 
   @override
   void initState() {
@@ -417,6 +440,60 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
       _hourTo = _floatToTod(r.hourTo!);
     }
     _reasonController = TextEditingController(text: r.reason);
+    _existingAttachments = List<LeaveAttachment>.from(r.attachments);
+  }
+
+  Future<void> _viewAttachment(LeaveAttachment a) async {
+    setState(() => _busyAttachments.add(a.id));
+    try {
+      final res = await widget.api.getAttachment(a.id);
+      final dataB64 = (res['data_b64'] ?? '').toString();
+      if (dataB64.isEmpty) throw Exception('empty file');
+      final err = await openBase64File(name: a.name, dataB64: dataB64);
+      if (err != null && mounted) showFileViewError(context, err);
+    } catch (e) {
+      if (mounted) showFileViewError(context, e.toString());
+    } finally {
+      if (mounted) setState(() => _busyAttachments.remove(a.id));
+    }
+  }
+
+  Future<void> _deleteAttachment(LeaveAttachment a) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Delete this file?'),
+        content: Text(a.name),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _busyAttachments.add(a.id));
+    try {
+      await widget.api.deleteAttachment(a.id);
+      if (mounted) {
+        setState(() => _existingAttachments.removeWhere((x) => x.id == a.id));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: AppTheme.error,
+        ));
+      }
+    } finally {
+      if (mounted) setState(() => _busyAttachments.remove(a.id));
+    }
   }
 
   TimeOfDay _floatToTod(double f) =>
@@ -777,25 +854,60 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
             ),
             maxLines: 2,
           ),
-          if (widget.record.attachments.isNotEmpty) ...[
+          if (_existingAttachments.isNotEmpty) ...[
             const SizedBox(height: 12),
-            for (final a in widget.record.attachments)
+            for (final a in _existingAttachments)
               Padding(
                 padding: const EdgeInsets.only(top: 6),
-                child: Row(
-                  children: [
-                    Icon(Icons.description_outlined,
-                        size: 18, color: AppTheme.primary),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '${a.name} · ${a.sizeLabel}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                        color: AppTheme.outline.withValues(alpha: 0.5)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.description_outlined,
+                          size: 18, color: AppTheme.primary),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${a.name} · ${a.sizeLabel}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 13),
+                        ),
                       ),
-                    ),
-                  ],
+                      if (_busyAttachments.contains(a.id))
+                        const SizedBox(
+                          height: 18,
+                          width: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      else ...[
+                        IconButton(
+                          tooltip: 'View',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 36, minHeight: 36),
+                          icon: Icon(Icons.visibility_outlined,
+                              size: 20, color: AppTheme.primary),
+                          onPressed: () => _viewAttachment(a),
+                        ),
+                        IconButton(
+                          tooltip: 'Delete',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(
+                              minWidth: 36, minHeight: 36),
+                          icon: Icon(Icons.close_rounded,
+                              size: 20, color: AppTheme.error),
+                          onPressed: () => _deleteAttachment(a),
+                        ),
+                      ],
+                    ],
+                  ),
                 ),
               ),
           ],

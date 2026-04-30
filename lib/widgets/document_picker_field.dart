@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../core/theme.dart';
+import 'file_viewer.dart';
 
 class PickedDocument {
   final String name;
@@ -166,6 +167,17 @@ class DocumentPickerField extends StatelessWidget {
                         fontSize: 12, color: AppTheme.onSurfaceVariant)),
               ],
             ),
+          ),
+          IconButton(
+            tooltip: 'View',
+            icon: Icon(Icons.visibility_outlined, color: AppTheme.primary),
+            onPressed: () async {
+              final err = await openBase64File(
+                  name: p.name, dataB64: p.dataB64);
+              if (err != null && context.mounted) {
+                showFileViewError(context, err);
+              }
+            },
           ),
           IconButton(
             tooltip: 'Replace',

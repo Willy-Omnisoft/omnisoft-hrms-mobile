@@ -124,6 +124,14 @@ class OmniMobileApi {
     });
   }
 
+  Future<Map<String, dynamic>> deleteAttachment(int attachmentId) {
+    return _post('/leave/attachment/delete', {'attachment_id': attachmentId});
+  }
+
+  Future<Map<String, dynamic>> getAttachment(int attachmentId) {
+    return _post('/leave/attachment/get', {'attachment_id': attachmentId});
+  }
+
   Future<Map<String, dynamic>> modifyLeave({
     required int leaveId,
     required String dateFrom,
