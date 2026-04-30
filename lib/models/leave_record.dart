@@ -11,6 +11,7 @@ class LeaveRecord {
   final double? allocationTaken;
   final double? allocationRemaining;
   final bool requiresAllocation;
+  final bool requiresDocument;
   final String requestUnit;
   final String? dateFromPeriod;
   final String? dateToPeriod;
@@ -32,6 +33,7 @@ class LeaveRecord {
     this.allocationTaken,
     this.allocationRemaining,
     this.requiresAllocation = false,
+    this.requiresDocument = false,
     this.requestUnit = 'day',
     this.dateFromPeriod,
     this.dateToPeriod,
@@ -55,6 +57,7 @@ class LeaveRecord {
       allocationTaken: (json['allocation_taken'] as num?)?.toDouble(),
       allocationRemaining: (json['allocation_remaining'] as num?)?.toDouble(),
       requiresAllocation: _parseBool(json['requires_allocation']),
+      requiresDocument: _parseBool(json['requires_document']),
       requestUnit: json['request_unit'] ?? 'day',
       dateFromPeriod: json['date_from_period']?.toString(),
       dateToPeriod: json['date_to_period']?.toString(),

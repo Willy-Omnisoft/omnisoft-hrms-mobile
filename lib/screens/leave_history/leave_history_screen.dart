@@ -610,11 +610,22 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
     }
   }
 
+  bool get _hasAnyDocument =>
+      _existingAttachments.isNotEmpty || _document != null;
+
+  bool get _docRequirementMet =>
+      !widget.record.requiresDocument || _hasAnyDocument;
+
   Future<void> _submit() async {
     if (!_periodValid) {
       setState(() => _error = _isHourly
           ? 'End time must be after start time.'
           : 'Afternoon → Morning on the same date is not a valid range.');
+      return;
+    }
+    if (!_docRequirementMet) {
+      setState(() => _error =
+          'A supporting document is required. Please upload one before saving.');
       return;
     }
     setState(() {
@@ -659,6 +670,9 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
     }
     if (raw.contains('invalid_dates')) {
       return 'Invalid dates. Make sure they are in the future and ordered.';
+    }
+    if (raw.contains('document_required')) {
+      return 'A supporting document is required for this leave type.';
     }
     return raw.replaceFirst(RegExp(r'^Exception: '), '');
   }
@@ -914,12 +928,28 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
           const SizedBox(height: 12),
           DocumentPickerField(
             picked: _document,
-            required: false,
+            required: widget.record.requiresDocument && !_hasAnyDocument,
             onChanged: (d) => setState(() {
               _document = d;
               _error = null;
             }),
           ),
+          if (widget.record.requiresDocument && !_hasAnyDocument) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 16, color: AppTheme.error),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'This leave type needs a supporting document. Upload one to save your changes.',
+                    style: TextStyle(fontSize: 12, color: AppTheme.error),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Container(
@@ -949,7 +979,9 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _submitting ? null : _submit,
+              onPressed: (_submitting || !_docRequirementMet)
+                  ? null
+                  : _submit,
               child: _submitting
                   ? const SizedBox(
                       height: 20,

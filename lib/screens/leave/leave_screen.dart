@@ -341,6 +341,9 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
     if (raw.contains('allocation') || raw.contains('No more')) {
       return 'Not enough allocation balance for this request.';
     }
+    if (raw.contains('document_required')) {
+      return 'A supporting document is required for this leave type.';
+    }
     return raw.replaceFirst(RegExp(r'^Exception: '), '');
   }
 
