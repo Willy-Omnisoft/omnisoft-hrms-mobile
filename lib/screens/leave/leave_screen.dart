@@ -305,7 +305,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         db: session.clientDb,
         token: session.token,
       );
-      final result = await api.applyLeave(
+      await api.applyLeave(
         holidayStatusId: widget.leaveType.id,
         dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
         dateTo: DateFormat('yyyy-MM-dd').format(
@@ -320,13 +320,11 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
       if (!mounted) return;
       Navigator.of(context).pop();
 
-      var msg = 'Leave submitted successfully';
-      if (result['document_required'] == true) {
-        msg +=
-            '\n\nSupporting document required. Upload will be available in next version.';
-      }
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(msg), backgroundColor: AppTheme.primary),
+        SnackBar(
+          content: const Text('Leave submitted successfully'),
+          backgroundColor: AppTheme.primary,
+        ),
       );
     } catch (e) {
       if (mounted) setState(() => _error = _humanizeError(e));
