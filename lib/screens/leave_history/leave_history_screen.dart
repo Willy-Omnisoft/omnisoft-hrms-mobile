@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../models/leave_record.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
+import '../../widgets/range_picker_dialog.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
   const LeaveHistoryScreen({super.key});
@@ -53,9 +55,63 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
         return AppTheme.error;
       case 'confirm':
         return AppTheme.secondary;
+      case 'cancel':
+        return AppTheme.outline;
       default:
         return AppTheme.outline;
     }
+  }
+
+  OmniMobileApi _api() {
+    final s = context.read<SessionService>();
+    return OmniMobileApi(
+      baseUrl: s.clientUrl,
+      db: s.clientDb,
+      token: s.token,
+    );
+  }
+
+  Future<void> _openCancelDialog(LeaveRecord r) async {
+    final confirmed = await showDialog<({bool ok, String reason})>(
+      context: context,
+      builder: (_) => _CancelLeaveDialog(record: r),
+    );
+    if (confirmed == null || !confirmed.ok || !mounted) return;
+    try {
+      await _api().cancelLeave(
+        leaveId: r.id,
+        reason: confirmed.reason.isEmpty ? null : confirmed.reason,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Leave cancelled'),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+      await refresh();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppTheme.error,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _openEditSheet(LeaveRecord r) async {
+    final saved = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (_) => _EditLeaveSheet(record: r, api: _api()),
+    );
+    if (saved == true) await refresh();
   }
 
   @override
@@ -163,6 +219,32 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                 ],
                 if (!r.requiresAllocation)
                   _detailRow('Allocation', 'No allocation required'),
+                if (r.state == 'confirm') ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.edit_outlined, size: 18),
+                          label: const Text('Edit'),
+                          onPressed: () => _openEditSheet(r),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: const Icon(Icons.close_rounded, size: 18),
+                          label: const Text('Cancel'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppTheme.error,
+                            side: BorderSide(color: AppTheme.error),
+                          ),
+                          onPressed: () => _openCancelDialog(r),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ],
           ),
@@ -206,6 +288,239 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
         valueColor: AlwaysStoppedAnimation<Color>(
           fraction > 0.8 ? AppTheme.error : AppTheme.primary,
         ),
+      ),
+    );
+  }
+}
+
+class _CancelLeaveDialog extends StatefulWidget {
+  final LeaveRecord record;
+  const _CancelLeaveDialog({required this.record});
+
+  @override
+  State<_CancelLeaveDialog> createState() => _CancelLeaveDialogState();
+}
+
+class _CancelLeaveDialogState extends State<_CancelLeaveDialog> {
+  final _reasonController = TextEditingController();
+
+  @override
+  void dispose() {
+    _reasonController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.record;
+    return AlertDialog(
+      title: const Text('Cancel this leave?'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${r.leaveType}\n${r.dateFrom ?? ''} → ${r.dateTo ?? ''}',
+            style: TextStyle(color: AppTheme.onSurfaceVariant, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reasonController,
+            decoration: const InputDecoration(
+              labelText: 'Reason (optional)',
+              border: OutlineInputBorder(),
+            ),
+            maxLines: 2,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context)
+              .pop((ok: false, reason: '')),
+          child: const Text('Keep it'),
+        ),
+        FilledButton(
+          style: FilledButton.styleFrom(backgroundColor: AppTheme.error),
+          onPressed: () => Navigator.of(context).pop(
+              (ok: true, reason: _reasonController.text.trim())),
+          child: const Text('Cancel leave'),
+        ),
+      ],
+    );
+  }
+}
+
+class _EditLeaveSheet extends StatefulWidget {
+  final LeaveRecord record;
+  final OmniMobileApi api;
+  const _EditLeaveSheet({required this.record, required this.api});
+
+  @override
+  State<_EditLeaveSheet> createState() => _EditLeaveSheetState();
+}
+
+class _EditLeaveSheetState extends State<_EditLeaveSheet> {
+  late DateTime _dateFrom;
+  late DateTime _dateTo;
+  late final TextEditingController _reasonController;
+  bool _submitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    final r = widget.record;
+    _dateFrom = _parseDate(r.dateFrom) ??
+        DateTime.now().add(const Duration(days: 1));
+    _dateTo = _parseDate(r.dateTo) ?? _dateFrom;
+    _reasonController = TextEditingController(text: r.reason);
+  }
+
+  DateTime? _parseDate(String? s) {
+    if (s == null || s.isEmpty) return null;
+    try {
+      return DateTime.parse(s);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  int get _dayCount => _dateTo.difference(_dateFrom).inDays + 1;
+
+  Future<void> _pickRange() async {
+    final today = DateTime.now();
+    final firstDate = DateTime(today.year, today.month, today.day);
+    final picked = await showDialog<DateTimeRange>(
+      context: context,
+      builder: (_) => RangePickerDialog(
+        initialStart:
+            _dateFrom.isBefore(firstDate) ? firstDate : _dateFrom,
+        initialEnd: _dateTo.isBefore(firstDate) ? firstDate : _dateTo,
+        firstDate: firstDate,
+        lastDate: firstDate.add(const Duration(days: 365)),
+      ),
+    );
+    if (picked != null) {
+      setState(() {
+        _dateFrom = picked.start;
+        _dateTo = picked.end;
+      });
+    }
+  }
+
+  Future<void> _submit() async {
+    setState(() => _submitting = true);
+    try {
+      await widget.api.modifyLeave(
+        leaveId: widget.record.id,
+        dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
+        dateTo: DateFormat('yyyy-MM-dd').format(_dateTo),
+        reason: _reasonController.text.trim(),
+      );
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Leave updated'),
+          backgroundColor: AppTheme.primary,
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+              content: Text('Error: $e'),
+              backgroundColor: AppTheme.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _submitting = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final fmt = DateFormat('dd MMM yyyy');
+    return Padding(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Edit ${widget.record.leaveType}',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 20),
+          InkWell(
+            onTap: _pickRange,
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                border: Border.all(color: AppTheme.outline),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.calendar_today,
+                      size: 18, color: AppTheme.primary),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Leave dates',
+                            style: TextStyle(
+                                fontSize: 12,
+                                color: AppTheme.onSurfaceVariant)),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  ·  ${_dayCount}d',
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_right, color: AppTheme.outline),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          TextField(
+            controller: _reasonController,
+            decoration: const InputDecoration(
+              labelText: 'Reason (optional)',
+              prefixIcon: Icon(Icons.notes),
+            ),
+            maxLines: 2,
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _submitting ? null : _submit,
+              child: _submitting
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white))
+                  : const Text('Save changes'),
+            ),
+          ),
+        ],
       ),
     );
   }

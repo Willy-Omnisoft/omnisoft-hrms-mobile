@@ -63,6 +63,8 @@ class LeaveRecord {
         return 'Approved';
       case 'refuse':
         return 'Refused';
+      case 'cancel':
+        return 'Cancelled';
       default:
         return state;
     }

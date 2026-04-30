@@ -103,6 +103,30 @@ class OmniMobileApi {
         .map((e) => LeaveRecord.fromJson(e as Map<String, dynamic>))
         .toList();
   }
+
+  Future<Map<String, dynamic>> cancelLeave({
+    required int leaveId,
+    String? reason,
+  }) async {
+    return _post('/leave/cancel', {
+      'leave_id': leaveId,
+      if (reason != null && reason.isNotEmpty) 'reason': reason,
+    });
+  }
+
+  Future<Map<String, dynamic>> modifyLeave({
+    required int leaveId,
+    required String dateFrom,
+    required String dateTo,
+    required String reason,
+  }) async {
+    return _post('/leave/modify', {
+      'leave_id': leaveId,
+      'date_from': dateFrom,
+      'date_to': dateTo,
+      'reason': reason,
+    });
+  }
 }
 
 class ApiException implements Exception {
