@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../models/leave_record.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
+import '../../widgets/auto_pickers.dart';
 import '../../widgets/range_picker_dialog.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
@@ -455,11 +456,12 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
     final today = DateTime.now();
     final firstDate = DateTime(today.year, today.month, today.day);
     if (_isHourly) {
-      final picked = await showDatePicker(
+      final picked = await showAutoDatePicker(
         context: context,
         initialDate: _dateFrom.isBefore(firstDate) ? firstDate : _dateFrom,
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
+        helpText: 'Select date',
       );
       if (picked != null) {
         setState(() {
@@ -490,7 +492,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   }
 
   Future<void> _pickTime(bool isFrom) async {
-    final picked = await showTimePicker(
+    final picked = await showAutoTimePicker(
       context: context,
       initialTime: isFrom ? _hourFrom : _hourTo,
     );
