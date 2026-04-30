@@ -46,6 +46,9 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     }
   }
 
+  String _fmtDays(double n) =>
+      n == n.roundToDouble() ? n.toInt().toString() : n.toStringAsFixed(1);
+
   Color _stateColor(String state) {
     switch (state) {
       case 'validate':
@@ -204,15 +207,15 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                     r.allocationTotal != null) ...[
                   _detailRow(
                     'Allocation',
-                    '${r.allocationTotal!.toStringAsFixed(0)} days total',
+                    '${_fmtDays(r.allocationTotal!)} days total',
                   ),
                   _detailRow(
                     'Used',
-                    '${(r.allocationTaken ?? 0).toStringAsFixed(0)} days',
+                    '${_fmtDays(r.allocationTaken ?? 0)} days',
                   ),
                   _detailRow(
                     'Remaining',
-                    '${(r.allocationRemaining ?? 0).toStringAsFixed(0)} days',
+                    '${_fmtDays(r.allocationRemaining ?? 0)} days',
                   ),
                   const SizedBox(height: 8),
                   _balanceBar(r),
