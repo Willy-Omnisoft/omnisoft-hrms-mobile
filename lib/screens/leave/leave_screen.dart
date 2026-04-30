@@ -171,6 +171,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   DateTime _dateTo = DateTime.now().add(const Duration(days: 1));
   final _reasonController = TextEditingController();
   bool _submitting = false;
+  String? _error;
 
   int get _dayCount => _dateTo.difference(_dateFrom).inDays + 1;
 
@@ -190,12 +191,16 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
       setState(() {
         _dateFrom = picked.start;
         _dateTo = picked.end;
+        _error = null;
       });
     }
   }
 
   Future<void> _submit() async {
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       final session = context.read<SessionService>();
       final api = OmniMobileApi(
@@ -221,15 +226,21 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         SnackBar(content: Text(msg), backgroundColor: AppTheme.primary),
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error: $e'), backgroundColor: AppTheme.error),
-        );
-      }
+      if (mounted) setState(() => _error = _humanizeError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  String _humanizeError(Object e) {
+    final raw = e.toString();
+    if (raw.contains('overlap') || raw.contains('already')) {
+      return 'You already have a leave request on these dates.';
+    }
+    if (raw.contains('allocation') || raw.contains('No more')) {
+      return 'Not enough allocation balance for this request.';
+    }
+    return raw.replaceFirst(RegExp(r'^Exception: '), '');
   }
 
   @override
@@ -306,6 +317,30 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
             ),
             maxLines: 2,
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline, color: AppTheme.error, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: AppTheme.error, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,

@@ -365,6 +365,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   late DateTime _dateTo;
   late final TextEditingController _reasonController;
   bool _submitting = false;
+  String? _error;
 
   @override
   void initState() {
@@ -404,12 +405,16 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
       setState(() {
         _dateFrom = picked.start;
         _dateTo = picked.end;
+        _error = null;
       });
     }
   }
 
   Future<void> _submit() async {
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
     try {
       await widget.api.modifyLeave(
         leaveId: widget.record.id,
@@ -426,16 +431,24 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         ),
       );
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-              content: Text('Error: $e'),
-              backgroundColor: AppTheme.error),
-        );
-      }
+      if (mounted) setState(() => _error = _humanizeError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
+  }
+
+  String _humanizeError(Object e) {
+    final raw = e.toString();
+    if (raw.contains('overlap') || raw.contains('already')) {
+      return 'You already have a leave request on these dates.';
+    }
+    if (raw.contains('allocation') || raw.contains('No more')) {
+      return 'Not enough allocation balance for these dates.';
+    }
+    if (raw.contains('invalid_dates')) {
+      return 'Invalid dates. Make sure they are in the future and ordered.';
+    }
+    return raw.replaceFirst(RegExp(r'^Exception: '), '');
   }
 
   @override
@@ -506,6 +519,31 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
             ),
             maxLines: 2,
           ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                    color: AppTheme.error.withValues(alpha: 0.3)),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline, color: AppTheme.error, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: TextStyle(color: AppTheme.error, fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 20),
           SizedBox(
             width: double.infinity,
