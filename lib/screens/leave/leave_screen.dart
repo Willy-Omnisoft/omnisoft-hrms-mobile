@@ -6,6 +6,7 @@ import '../../models/leave_type.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auto_pickers.dart';
+import '../../widgets/document_picker_field.dart';
 import '../../widgets/range_picker_dialog.dart';
 
 class LeaveScreen extends StatefulWidget {
@@ -175,6 +176,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   TimeOfDay _hourFrom = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _hourTo = const TimeOfDay(hour: 17, minute: 0);
   final _reasonController = TextEditingController();
+  PickedDocument? _document;
   bool _submitting = false;
   String? _error;
 
@@ -287,6 +289,11 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
           : 'Afternoon → Morning on the same date is not a valid range.');
       return;
     }
+    if (widget.leaveType.mobileRequiresDocument && _document == null) {
+      setState(() =>
+          _error = 'A supporting document is required for this leave type.');
+      return;
+    }
     setState(() {
       _submitting = true;
       _error = null;
@@ -308,6 +315,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         dateToPeriod: _isHalfDay ? _toPeriod : null,
         hourFrom: _isHourly ? _todToFloat(_hourFrom) : null,
         hourTo: _isHourly ? _todToFloat(_hourTo) : null,
+        attachment: _document?.toApiJson(),
       );
       if (!mounted) return;
       Navigator.of(context).pop();
@@ -444,7 +452,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
             Padding(
               padding: const EdgeInsets.only(top: 4),
               child: Text(
-                'Supporting document required. Upload will be available in next version.',
+                'Supporting document required.',
                 style: TextStyle(fontSize: 12, color: AppTheme.error),
               ),
             ),
@@ -535,6 +543,18 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
             ),
             maxLines: 2,
           ),
+          if (widget.leaveType.mobileRequiresDocument ||
+              _document != null) ...[
+            const SizedBox(height: 12),
+            DocumentPickerField(
+              picked: _document,
+              required: widget.leaveType.mobileRequiresDocument,
+              onChanged: (d) => setState(() {
+                _document = d;
+                _error = null;
+              }),
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 12),
             Container(

@@ -17,6 +17,7 @@ class LeaveRecord {
   final double? hourFrom;
   final double? hourTo;
   final double numberOfHours;
+  final List<LeaveAttachment> attachments;
 
   LeaveRecord({
     required this.id,
@@ -37,6 +38,7 @@ class LeaveRecord {
     this.hourFrom,
     this.hourTo,
     this.numberOfHours = 0,
+    this.attachments = const [],
   });
 
   factory LeaveRecord.fromJson(Map<String, dynamic> json) {
@@ -59,6 +61,9 @@ class LeaveRecord {
       hourFrom: (json['hour_from'] as num?)?.toDouble(),
       hourTo: (json['hour_to'] as num?)?.toDouble(),
       numberOfHours: (json['number_of_hours'] ?? 0).toDouble(),
+      attachments: (json['attachments'] as List<dynamic>? ?? [])
+          .map((e) => LeaveAttachment.fromJson(e as Map<String, dynamic>))
+          .toList(),
     );
   }
 
@@ -104,5 +109,34 @@ class LeaveRecord {
       default:
         return state;
     }
+  }
+}
+
+class LeaveAttachment {
+  final int id;
+  final String name;
+  final String mimetype;
+  final int fileSize;
+
+  LeaveAttachment({
+    required this.id,
+    required this.name,
+    required this.mimetype,
+    this.fileSize = 0,
+  });
+
+  factory LeaveAttachment.fromJson(Map<String, dynamic> json) {
+    return LeaveAttachment(
+      id: json['id'] ?? 0,
+      name: json['name'] ?? '',
+      mimetype: json['mimetype'] ?? '',
+      fileSize: (json['file_size'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  String get sizeLabel {
+    if (fileSize < 1024) return '${fileSize}B';
+    if (fileSize < 1024 * 1024) return '${(fileSize / 1024).toStringAsFixed(0)}KB';
+    return '${(fileSize / (1024 * 1024)).toStringAsFixed(1)}MB';
   }
 }

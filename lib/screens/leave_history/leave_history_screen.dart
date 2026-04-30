@@ -6,6 +6,7 @@ import '../../models/leave_record.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auto_pickers.dart';
+import '../../widgets/document_picker_field.dart';
 import '../../widgets/range_picker_dialog.dart';
 
 class LeaveHistoryScreen extends StatefulWidget {
@@ -223,6 +224,28 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
                 ],
                 if (!r.requiresAllocation)
                   _detailRow('Allocation', 'No allocation required'),
+                if (r.attachments.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  for (final a in r.attachments)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Icon(Icons.description_outlined,
+                              size: 16, color: AppTheme.primary),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              '${a.name} · ${a.sizeLabel}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 13),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
                 if (r.state == 'confirm') ...[
                   const SizedBox(height: 12),
                   Row(
@@ -376,6 +399,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   String _toPeriod = 'pm';
   TimeOfDay _hourFrom = const TimeOfDay(hour: 9, minute: 0);
   TimeOfDay _hourTo = const TimeOfDay(hour: 17, minute: 0);
+  PickedDocument? _document;
 
   @override
   void initState() {
@@ -531,6 +555,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         dateToPeriod: _isHalfDay ? _toPeriod : null,
         hourFrom: _isHourly ? _todToFloat(_hourFrom) : null,
         hourTo: _isHourly ? _todToFloat(_hourTo) : null,
+        attachment: _document?.toApiJson(),
       );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -751,6 +776,37 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
               prefixIcon: Icon(Icons.notes),
             ),
             maxLines: 2,
+          ),
+          if (widget.record.attachments.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            for (final a in widget.record.attachments)
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Row(
+                  children: [
+                    Icon(Icons.description_outlined,
+                        size: 18, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        '${a.name} · ${a.sizeLabel}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+          ],
+          const SizedBox(height: 12),
+          DocumentPickerField(
+            picked: _document,
+            required: false,
+            onChanged: (d) => setState(() {
+              _document = d;
+              _error = null;
+            }),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),

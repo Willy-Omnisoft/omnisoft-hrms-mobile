@@ -91,6 +91,7 @@ class OmniMobileApi {
     String? dateToPeriod,
     double? hourFrom,
     double? hourTo,
+    Map<String, dynamic>? attachment,
   }) async {
     return _post('/leave/apply', {
       'holiday_status_id': holidayStatusId,
@@ -101,6 +102,7 @@ class OmniMobileApi {
       if (dateToPeriod != null) 'date_to_period': dateToPeriod,
       if (hourFrom != null) 'hour_from': hourFrom,
       if (hourTo != null) 'hour_to': hourTo,
+      if (attachment != null) 'attachment': attachment,
     });
   }
 
@@ -131,6 +133,7 @@ class OmniMobileApi {
     String? dateToPeriod,
     double? hourFrom,
     double? hourTo,
+    Map<String, dynamic>? attachment,
   }) async {
     return _post('/leave/modify', {
       'leave_id': leaveId,
@@ -141,6 +144,7 @@ class OmniMobileApi {
       if (dateToPeriod != null) 'date_to_period': dateToPeriod,
       if (hourFrom != null) 'hour_from': hourFrom,
       if (hourTo != null) 'hour_to': hourTo,
+      if (attachment != null) 'attachment': attachment,
     });
   }
 }
