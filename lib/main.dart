@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'core/constants.dart';
 import 'core/theme.dart';
+import 'services/holiday_service.dart';
 import 'services/session_service.dart';
 import 'screens/company_code/company_code_screen.dart';
 import 'screens/home/home_shell.dart';
@@ -19,8 +20,11 @@ class OmniHrApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider.value(
-      value: session,
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: session),
+        ChangeNotifierProvider(create: (_) => HolidayService()),
+      ],
       child: MaterialApp(
         title: AppConstants.appName,
         theme: AppTheme.lightTheme,

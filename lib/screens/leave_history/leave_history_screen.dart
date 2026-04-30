@@ -5,6 +5,7 @@ import '../../core/theme.dart';
 import '../../models/leave_record.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
+import '../../services/holiday_service.dart';
 import '../../widgets/auto_pickers.dart';
 import '../../widgets/document_picker_field.dart';
 import '../../widgets/file_viewer.dart';
@@ -556,6 +557,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   Future<void> _pickRange() async {
     final today = DateTime.now();
     final firstDate = DateTime(today.year, today.month, today.day);
+    final holidays = context.read<HolidayService>();
     if (_isHourly) {
       final picked = await showAutoDatePicker(
         context: context,
@@ -563,6 +565,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
         helpText: 'Select date',
+        holidayName: holidays.holidayName,
       );
       if (picked != null) {
         setState(() {
@@ -581,6 +584,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         initialEnd: _dateTo.isBefore(firstDate) ? firstDate : _dateTo,
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
+        holidayName: holidays.holidayName,
       ),
     );
     if (picked != null) {

@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
 import '../../models/leave_type.dart';
+import '../../services/holiday_service.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auto_pickers.dart';
@@ -229,6 +230,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   Future<void> _pickRange() async {
     final today = DateTime.now();
     final firstDate = DateTime(today.year, today.month, today.day);
+    final holidays = context.read<HolidayService>();
     if (_isHourly) {
       final picked = await showAutoDatePicker(
         context: context,
@@ -236,6 +238,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
         helpText: 'Select date',
+        holidayName: holidays.holidayName,
       );
       if (picked != null) {
         setState(() {
@@ -253,6 +256,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         initialEnd: _dateTo,
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
+        holidayName: holidays.holidayName,
       ),
     );
     if (picked != null) {

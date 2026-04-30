@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 import '../models/attendance_status.dart';
 import '../models/leave_type.dart';
 import '../models/leave_record.dart';
+import '../models/public_holiday.dart';
 
 class OmniMobileApi {
   final String baseUrl;
@@ -122,6 +123,14 @@ class OmniMobileApi {
       'leave_id': leaveId,
       if (reason != null && reason.isNotEmpty) 'reason': reason,
     });
+  }
+
+  Future<List<PublicHoliday>> getPublicHolidays() async {
+    final data = await _post('/public_holidays');
+    final list = data['holidays'] as List<dynamic>;
+    return list
+        .map((e) => PublicHoliday.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<Map<String, dynamic>> deleteAttachment(int attachmentId) {

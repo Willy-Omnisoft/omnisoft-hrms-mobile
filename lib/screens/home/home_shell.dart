@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'home_screen.dart';
 import '../leave/leave_screen.dart';
 import '../leave_history/leave_history_screen.dart';
 import '../profile/profile_screen.dart';
+import '../../services/holiday_service.dart';
+import '../../services/session_service.dart';
 
 class HomeShell extends StatefulWidget {
   const HomeShell({super.key});
@@ -28,6 +31,10 @@ class _HomeShellState extends State<HomeShell> {
       LeaveHistoryScreen(key: _historyKey),
       const ProfileScreen(),
     ];
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final session = context.read<SessionService>();
+      context.read<HolidayService>().loadFromSession(session);
+    });
   }
 
   void _onTabTap(int i) {

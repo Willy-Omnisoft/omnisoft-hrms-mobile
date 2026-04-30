@@ -8,6 +8,7 @@ class RangePickerDialog extends StatefulWidget {
   final DateTime initialEnd;
   final DateTime firstDate;
   final DateTime lastDate;
+  final String? Function(DateTime)? holidayName;
 
   const RangePickerDialog({
     super.key,
@@ -15,6 +16,7 @@ class RangePickerDialog extends StatefulWidget {
     required this.initialEnd,
     required this.firstDate,
     required this.lastDate,
+    this.holidayName,
   });
 
   @override
@@ -32,6 +34,42 @@ class _RangePickerDialogState extends State<RangePickerDialog> {
     _start = widget.initialStart;
     _end = widget.initialEnd;
     _focused = widget.initialStart;
+  }
+
+  Widget _selectedHolidayHint() {
+    final names = <String>{};
+    final f = widget.holidayName;
+    if (f != null && _start != null) {
+      final endOrStart = _end ?? _start!;
+      var d = _start!;
+      while (!d.isAfter(endOrStart)) {
+        final n = f(d);
+        if (n != null) names.add(n);
+        d = d.add(const Duration(days: 1));
+      }
+    }
+    if (names.isEmpty) return const SizedBox.shrink();
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.event_busy, size: 16, color: AppTheme.error),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              names.length == 1
+                  ? 'Public holiday: ${names.first}'
+                  : 'Public holidays: ${names.join(', ')}',
+              style: TextStyle(fontSize: 12, color: AppTheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _onDayTapped(DateTime selected, DateTime focused) {
@@ -91,7 +129,52 @@ class _RangePickerDialogState extends State<RangePickerDialog> {
               rangeSelectionMode: RangeSelectionMode.toggledOff,
               selectedDayPredicate: (day) =>
                   _start != null && _end == null && isSameDay(day, _start),
+              holidayPredicate: (day) =>
+                  widget.holidayName?.call(day) != null,
               onDaySelected: _onDayTapped,
+              calendarBuilders: CalendarBuilders(
+                holidayBuilder: (context, day, focusedDay) {
+                  final inRange = _start != null &&
+                      _end != null &&
+                      !day.isBefore(_start!) &&
+                      !day.isAfter(_end!);
+                  final isStart =
+                      _start != null && isSameDay(day, _start);
+                  final isEnd = _end != null && isSameDay(day, _end);
+                  final selectedOnly = _start != null &&
+                      _end == null &&
+                      isSameDay(day, _start);
+                  if (isStart || isEnd || selectedOnly) {
+                    return null; // let default range start/end render
+                  }
+                  return Container(
+                    margin: const EdgeInsets.all(4),
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: inRange
+                          ? AppTheme.primary.withValues(alpha: 0.15)
+                          : null,
+                      shape: BoxShape.rectangle,
+                    ),
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: AppTheme.error.withValues(alpha: 0.12),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${day.day}',
+                        style: TextStyle(
+                          color: AppTheme.error,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
               calendarStyle: CalendarStyle(
                 selectedDecoration: BoxDecoration(
                   color: AppTheme.primary,
@@ -128,6 +211,10 @@ class _RangePickerDialogState extends State<RangePickerDialog> {
               ),
               availableGestures: AvailableGestures.horizontalSwipe,
             ),
+            if (widget.holidayName != null) ...[
+              const SizedBox(height: 8),
+              _selectedHolidayHint(),
+            ],
             const SizedBox(height: 8),
             Align(
               alignment: Alignment.centerRight,
