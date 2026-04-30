@@ -123,12 +123,16 @@ class OmniMobileApi {
     required String dateFrom,
     required String dateTo,
     required String reason,
+    String? dateFromPeriod,
+    String? dateToPeriod,
   }) async {
     return _post('/leave/modify', {
       'leave_id': leaveId,
       'date_from': dateFrom,
       'date_to': dateTo,
       'reason': reason,
+      if (dateFromPeriod != null) 'date_from_period': dateFromPeriod,
+      if (dateToPeriod != null) 'date_to_period': dateToPeriod,
     });
   }
 }
