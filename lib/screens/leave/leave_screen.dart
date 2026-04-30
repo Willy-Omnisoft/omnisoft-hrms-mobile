@@ -356,17 +356,25 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
     _focused = widget.initialStart;
   }
 
-  void _onRangeSelected(DateTime? start, DateTime? end, DateTime focused) {
+  void _onDayTapped(DateTime selected, DateTime focused) {
+    final tapped = DateTime(selected.year, selected.month, selected.day);
     setState(() {
-      _start = start;
-      _end = end;
       _focused = focused;
+      if (_start == null || _end != null) {
+        _start = tapped;
+        _end = null;
+      } else if (tapped.isBefore(_start!)) {
+        _start = tapped;
+        _end = null;
+      } else {
+        _end = tapped;
+      }
     });
-    if (start != null && end != null) {
-      // Auto-dismiss on full range selection
+    if (_start != null && _end != null) {
       Future.delayed(const Duration(milliseconds: 150), () {
         if (mounted) {
-          Navigator.of(context).pop(DateTimeRange(start: start, end: end));
+          Navigator.of(context).pop(
+              DateTimeRange(start: _start!, end: _end!));
         }
       });
     }
@@ -402,9 +410,17 @@ class _RangePickerDialogState extends State<_RangePickerDialog> {
               focusedDay: _focused,
               rangeStartDay: _start,
               rangeEndDay: _end,
-              rangeSelectionMode: RangeSelectionMode.toggledOn,
-              onRangeSelected: _onRangeSelected,
+              rangeSelectionMode: RangeSelectionMode.toggledOff,
+              selectedDayPredicate: (day) =>
+                  _start != null && _end == null && isSameDay(day, _start),
+              onDaySelected: _onDayTapped,
               calendarStyle: CalendarStyle(
+                selectedDecoration: BoxDecoration(
+                  color: AppTheme.primary,
+                  shape: BoxShape.circle,
+                ),
+                selectedTextStyle: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
                 rangeStartDecoration: BoxDecoration(
                   color: AppTheme.primary,
                   shape: BoxShape.circle,
