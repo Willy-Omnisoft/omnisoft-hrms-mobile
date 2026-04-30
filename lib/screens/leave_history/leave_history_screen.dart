@@ -492,9 +492,10 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   }
 
   Future<void> _pickTime(bool isFrom) async {
-    final picked = await showAutoTimePicker(
+    final picked = await showTimePicker(
       context: context,
       initialTime: isFrom ? _hourFrom : _hourTo,
+      initialEntryMode: TimePickerEntryMode.dial,
     );
     if (picked != null) {
       setState(() {
