@@ -37,8 +37,18 @@ class LeaveRecord {
       allocationTotal: (json['allocation_total'] as num?)?.toDouble(),
       allocationTaken: (json['allocation_taken'] as num?)?.toDouble(),
       allocationRemaining: (json['allocation_remaining'] as num?)?.toDouble(),
-      requiresAllocation: json['requires_allocation'] == true,
+      requiresAllocation: _parseBool(json['requires_allocation']),
     );
+  }
+
+  static bool _parseBool(dynamic v) {
+    if (v is bool) return v;
+    if (v is num) return v != 0;
+    if (v is String) {
+      final s = v.toLowerCase();
+      return s == 'true' || s == 'yes' || s == '1';
+    }
+    return false;
   }
 
   String get stateLabel {
