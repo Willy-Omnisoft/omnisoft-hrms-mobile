@@ -9,6 +9,7 @@ class RangePickerDialog extends StatefulWidget {
   final DateTime firstDate;
   final DateTime lastDate;
   final String? Function(DateTime)? holidayName;
+  final bool Function(DateTime)? isNonWorkingDay;
 
   const RangePickerDialog({
     super.key,
@@ -17,6 +18,7 @@ class RangePickerDialog extends StatefulWidget {
     required this.firstDate,
     required this.lastDate,
     this.holidayName,
+    this.isNonWorkingDay,
   });
 
   @override
@@ -133,6 +135,33 @@ class _RangePickerDialogState extends State<RangePickerDialog> {
                   widget.holidayName?.call(day) != null,
               onDaySelected: _onDayTapped,
               calendarBuilders: CalendarBuilders(
+                defaultBuilder: (context, day, focusedDay) {
+                  if (widget.isNonWorkingDay?.call(day) == true &&
+                      widget.holidayName?.call(day) == null) {
+                    final inRange = _start != null &&
+                        _end != null &&
+                        !day.isBefore(_start!) &&
+                        !day.isAfter(_end!);
+                    return Container(
+                      margin: const EdgeInsets.all(4),
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: inRange
+                            ? AppTheme.primary.withValues(alpha: 0.15)
+                            : null,
+                      ),
+                      child: Text(
+                        '${day.day}',
+                        style: TextStyle(
+                          color:
+                              AppTheme.onSurfaceVariant.withValues(alpha: 0.5),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    );
+                  }
+                  return null;
+                },
                 holidayBuilder: (context, day, focusedDay) {
                   final inRange = _start != null &&
                       _end != null &&

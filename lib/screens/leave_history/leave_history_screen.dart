@@ -529,15 +529,18 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   }
 
   double get _dayCount {
-    final base = _dateTo.difference(_dateFrom).inDays + 1;
-    if (!_isHalfDay) return base.toDouble();
-    if (_isSameDate) {
-      return _fromPeriod == _toPeriod ? 0.5 : 1.0;
+    final holidays = context.read<HolidayService>();
+    if (_isHalfDay) {
+      if (_isSameDate) {
+        if (!holidays.isWorkingDay(_dateFrom)) return 0;
+        return _fromPeriod == _toPeriod ? 0.5 : 1.0;
+      }
+      var d = holidays.workingDaysBetween(_dateFrom, _dateTo).toDouble();
+      if (_fromPeriod == 'pm' && holidays.isWorkingDay(_dateFrom)) d -= 0.5;
+      if (_toPeriod == 'am' && holidays.isWorkingDay(_dateTo)) d -= 0.5;
+      return d < 0 ? 0 : d;
     }
-    var d = base.toDouble();
-    if (_fromPeriod == 'pm') d -= 0.5;
-    if (_toPeriod == 'am') d -= 0.5;
-    return d;
+    return holidays.workingDaysBetween(_dateFrom, _dateTo).toDouble();
   }
 
   String get _dayCountLabel {
@@ -566,6 +569,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         lastDate: firstDate.add(const Duration(days: 365)),
         helpText: 'Select date',
         holidayName: holidays.holidayName,
+        isNonWorkingDay: (d) => !holidays.isWorkingDay(d),
       );
       if (picked != null) {
         setState(() {
@@ -585,6 +589,7 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
         firstDate: firstDate,
         lastDate: firstDate.add(const Duration(days: 365)),
         holidayName: holidays.holidayName,
+        isNonWorkingDay: (d) => !holidays.isWorkingDay(d),
       ),
     );
     if (picked != null) {

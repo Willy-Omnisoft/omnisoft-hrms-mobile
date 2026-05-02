@@ -9,6 +9,7 @@ Future<DateTime?> showAutoDatePicker({
   required DateTime lastDate,
   String? helpText,
   String? Function(DateTime)? holidayName,
+  bool Function(DateTime)? isNonWorkingDay,
 }) {
   return showDialog<DateTime>(
     context: context,
@@ -22,6 +23,7 @@ Future<DateTime?> showAutoDatePicker({
           lastDate: lastDate,
           helpText: helpText,
           holidayName: holidayName,
+          isNonWorkingDay: isNonWorkingDay,
         ),
       ),
     ),
@@ -34,6 +36,7 @@ class _AutoDatePickerBody extends StatefulWidget {
   final DateTime lastDate;
   final String? helpText;
   final String? Function(DateTime)? holidayName;
+  final bool Function(DateTime)? isNonWorkingDay;
 
   const _AutoDatePickerBody({
     required this.initialDate,
@@ -41,6 +44,7 @@ class _AutoDatePickerBody extends StatefulWidget {
     required this.lastDate,
     this.helpText,
     this.holidayName,
+    this.isNonWorkingDay,
   });
 
   @override

@@ -125,12 +125,19 @@ class OmniMobileApi {
     });
   }
 
-  Future<List<PublicHoliday>> getPublicHolidays() async {
+  Future<CalendarInfoResponse> getPublicHolidays() async {
     final data = await _post('/public_holidays');
     final list = data['holidays'] as List<dynamic>;
-    return list
-        .map((e) => PublicHoliday.fromJson(e as Map<String, dynamic>))
-        .toList();
+    final weekdays = (data['working_weekdays'] as List<dynamic>?)
+            ?.map((e) => (e as num).toInt())
+            .toList() ??
+        const [0, 1, 2, 3, 4]; // server convention: Mon=0..Sun=6
+    return CalendarInfoResponse(
+      holidays: list
+          .map((e) => PublicHoliday.fromJson(e as Map<String, dynamic>))
+          .toList(),
+      workingWeekdays: weekdays,
+    );
   }
 
   Future<Map<String, dynamic>> deleteAttachment(int attachmentId) {
@@ -164,6 +171,16 @@ class OmniMobileApi {
       if (attachment != null) 'attachment': attachment,
     });
   }
+}
+
+class CalendarInfoResponse {
+  final List<PublicHoliday> holidays;
+  final List<int> workingWeekdays; // Odoo: Mon=0..Sun=6
+
+  CalendarInfoResponse({
+    required this.holidays,
+    required this.workingWeekdays,
+  });
 }
 
 class ApiException implements Exception {
