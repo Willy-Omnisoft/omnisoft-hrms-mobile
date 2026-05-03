@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
-import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants.dart';
 import '../../core/datetime_utils.dart';
 import '../../core/theme.dart';
 import '../../models/attendance_status.dart';
+import '../../models/face_capture_result.dart';
+import '../../services/device_service.dart';
+import '../../services/location_service.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
-import '../face_scan/face_scan_screen.dart';
+import '../face_scan/face_capture_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -21,6 +23,9 @@ class HomeScreenState extends State<HomeScreen> {
   bool _loading = true;
   String? _error;
   bool _acting = false;
+  String _gpsHint = '';
+  final _locationService = LocationService();
+  final _deviceService = DeviceService();
 
   OmniMobileApi _api(SessionService s) => OmniMobileApi(
         baseUrl: s.clientUrl,
@@ -50,76 +55,109 @@ class HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<Position?> _getPosition() async {
-    try {
-      LocationPermission perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        perm = await Geolocator.requestPermission();
-      }
-      if (perm == LocationPermission.denied ||
-          perm == LocationPermission.deniedForever) {
-        return null;
-      }
-      return await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      ).timeout(const Duration(seconds: 10));
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> _onCheckAction() async {
-    // Navigate to face scan placeholder, then perform action
-    final result = await Navigator.of(context).push<bool>(
-      MaterialPageRoute(builder: (_) => const FaceScanScreen()),
-    );
-    if (result != true || !mounted) return;
+    if (_acting) return;
+    setState(() {
+      _acting = true;
+      _gpsHint = 'Locating…';
+    });
 
-    setState(() => _acting = true);
+    // Step 1 — GPS
+    final loc = await _locationService.getCurrent();
+    if (!mounted) return;
+    if (!loc.isReady) {
+      setState(() {
+        _acting = false;
+        _gpsHint = 'GPS failed';
+      });
+      _showError(loc.friendlyMessage);
+      return;
+    }
+    setState(() => _gpsHint = loc.isDevFallback ? 'DEV location' : 'GPS ready');
+
+    // Step 2 — Face capture
+    final faceResult = await Navigator.of(context).push<FaceCaptureResult>(
+      MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
+    );
+    if (!mounted) {
+      return;
+    }
+    if (faceResult == null || !faceResult.success) {
+      setState(() => _acting = false);
+      if (faceResult?.errorMessage != null) {
+        _showError(faceResult!.errorMessage!);
+      }
+      return;
+    }
+
+    // Step 3 — submit attendance
     try {
       final session = context.read<SessionService>();
       final api = _api(session);
-      double lat;
-      double lng;
-      if (DevConstants.useDevLocation) {
-        lat = DevConstants.fallbackLatitude;
-        lng = DevConstants.fallbackLongitude;
-      } else {
-        final pos = await _getPosition();
-        lat = pos?.latitude ?? DevConstants.fallbackLatitude;
-        lng = pos?.longitude ?? DevConstants.fallbackLongitude;
-      }
+      final deviceId = await _deviceService.getDeviceId();
+      final wasCheckedIn = _status?.checkedIn == true;
 
-      if (_status?.checkedIn == true) {
+      if (wasCheckedIn) {
         await api.checkOut(
-            latitude: lat, longitude: lng, deviceId: 'flutter-app');
+          latitude: loc.latitude!,
+          longitude: loc.longitude!,
+          faceVerified: faceResult.faceVerified,
+          deviceId: deviceId,
+        );
       } else {
         await api.checkIn(
-            latitude: lat, longitude: lng, deviceId: 'flutter-app');
+          latitude: loc.latitude!,
+          longitude: loc.longitude!,
+          faceVerified: faceResult.faceVerified,
+          deviceId: deviceId,
+        );
       }
+
       await refresh();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(_status?.checkedIn == true
-                ? 'Checked in successfully!'
-                : 'Checked out successfully!'),
+            content: Text(wasCheckedIn
+                ? 'Checked out successfully!'
+                : 'Checked in successfully!'),
             backgroundColor: AppTheme.primary,
           ),
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AppTheme.error,
-          ),
-        );
-      }
+      if (mounted) _showError(_humanizeApiError(e));
     } finally {
       if (mounted) setState(() => _acting = false);
     }
+  }
+
+  void _showError(String msg) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg), backgroundColor: AppTheme.error),
+    );
+  }
+
+  String _humanizeApiError(Object e) {
+    final raw = e.toString();
+    if (raw.contains('outside_geofence')) {
+      return 'You are outside the allowed office location.';
+    }
+    if (raw.contains('face_not_verified')) {
+      return 'Face verification failed. Please try again.';
+    }
+    if (raw.contains('mobile_not_enabled')) {
+      return 'Mobile attendance is not enabled for your employee profile.';
+    }
+    if (raw.contains('already_checked_in')) {
+      return 'You are already checked in.';
+    }
+    if (raw.contains('not_checked_in')) {
+      return 'You are not currently checked in.';
+    }
+    if (raw.contains('invalid_token')) {
+      return 'Your session expired. Please login again.';
+    }
+    return raw.replaceFirst(RegExp(r'^Exception: '), '');
   }
 
   @override
@@ -243,32 +281,34 @@ class HomeScreenState extends State<HomeScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        // GPS indicator
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              DevConstants.useDevLocation
-                  ? Icons.developer_mode
-                  : Icons.gps_fixed,
-              size: 16,
-              color: DevConstants.useDevLocation
-                  ? Colors.orange
-                  : AppTheme.outline,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              DevConstants.useDevLocation
-                  ? 'DEV location active'
-                  : 'GPS Ready',
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: DevConstants.useDevLocation
-                        ? Colors.orange
-                        : AppTheme.outline,
-                  ),
-            ),
-          ],
-        ),
+        _gpsIndicator(),
+      ],
+    );
+  }
+
+  Widget _gpsIndicator() {
+    final isDev = DevConstants.useDevLocation;
+    final label = _gpsHint.isNotEmpty
+        ? _gpsHint
+        : (isDev ? 'DEV location active' : 'GPS Ready');
+    final color = isDev
+        ? Colors.orange
+        : (_gpsHint == 'GPS failed' ? AppTheme.error : AppTheme.outline);
+    final icon = isDev
+        ? Icons.developer_mode
+        : (_gpsHint == 'GPS failed'
+            ? Icons.gps_off
+            : (_gpsHint == 'Locating…'
+                ? Icons.gps_not_fixed
+                : Icons.gps_fixed));
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(icon, size: 16, color: color),
+        const SizedBox(width: 4),
+        Text(label,
+            style:
+                Theme.of(context).textTheme.bodySmall?.copyWith(color: color)),
       ],
     );
   }

@@ -31,8 +31,12 @@
 		<key>NSAllowsArbitraryLoads</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>Omni HR needs camera access to capture your face for attendance verification.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Omni HR needs your location for attendance geofence verification.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Omni HR needs photo library access to attach supporting documents to leave requests.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
