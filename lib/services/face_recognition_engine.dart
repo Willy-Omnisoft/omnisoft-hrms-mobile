@@ -203,12 +203,26 @@ class SimulatedFaceRecognitionEngine implements FaceRecognitionEngine {
 // Production scaffold — ML Kit quality + fail-closed identity matching
 // =====================================================================
 
+/// Pixel normalization for the bundled face-embedding model.
+/// Read from the interpreter's input shape — different models expect
+/// different preprocessing, picking the wrong one silently produces
+/// garbage embeddings.
+enum _Normalization {
+  /// MobileFaceNet, ArcFace etc. — (p - 127.5) / 128 → range [-1, 1]
+  minusOneToOne,
+  /// FaceNet (David Sandberg / deepface) — per-image mean/std
+  /// standardization (a.k.a. "prewhitening").
+  perImageStandardization,
+}
+
 class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
   static const _modelAsset = 'assets/models/mobilefacenet.tflite';
-  static const _modelInputSize = 112;
 
   late FaceDetector _detector;
   Interpreter? _embedder;
+  // Detected at model load.
+  int _inputSize = 112;
+  _Normalization _norm = _Normalization.minusOneToOne;
   bool _initialized = false;
   bool _embedderTried = false; // avoid spamming load attempts
 
@@ -243,12 +257,20 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
       _embedder = await Interpreter.fromAsset(_modelAsset);
       final inShape = _embedder!.getInputTensor(0).shape;
       final outShape = _embedder!.getOutputTensor(0).shape;
-      debugPrint(
-          'MobileFaceNet loaded — input=$inShape output=$outShape');
+      // Expect [1, H, W, 3] — pull H (= W for the supported models).
+      _inputSize = inShape.length >= 3 ? inShape[1] : 112;
+      // Heuristic: 160x160 → FaceNet (per-image standardization);
+      // 112x112 → MobileFaceNet/ArcFace ([-1, 1]). If a future model
+      // breaks this rule, override via DevConstants.
+      _norm = _inputSize >= 160
+          ? _Normalization.perImageStandardization
+          : _Normalization.minusOneToOne;
+      debugPrint('Face embedder loaded — input=$inShape output=$outShape '
+          'inputSize=$_inputSize norm=${_norm.name}');
       return _embedder;
     } catch (e) {
       debugPrint(
-          'MobileFaceNet model not found at $_modelAsset (or load '
+          'Face embedder model not found at $_modelAsset (or load '
           'failed): $e — falling back to fail-closed identity match');
       return null;
     }
@@ -354,26 +376,68 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
 
     final cropped = img.copyCrop(decoded, x: x, y: y, width: w, height: h);
     final resized = img.copyResize(cropped,
-        width: _modelInputSize, height: _modelInputSize);
+        width: _inputSize, height: _inputSize);
 
-    // Build [1, 112, 112, 3] float32 tensor with [-1, 1] normalization.
-    final inTensor = List.generate(
-      1,
-      (_) => List.generate(
-        _modelInputSize,
-        (yy) => List.generate(
-          _modelInputSize,
-          (xx) {
-            final p = resized.getPixel(xx, yy);
-            return [
-              (p.r - 127.5) / 128.0,
-              (p.g - 127.5) / 128.0,
-              (p.b - 127.5) / 128.0,
-            ];
-          },
+    // Build the input tensor with the right normalization for the
+    // loaded model (auto-detected from input size in _ensureEmbedder).
+    List<List<List<List<double>>>> inTensor;
+    if (_norm == _Normalization.perImageStandardization) {
+      // FaceNet pre-whitening: subtract mean / divide by std (with
+      // floor of 1/sqrt(N) per Sandberg's reference impl).
+      final pixels = <double>[];
+      for (var yy = 0; yy < _inputSize; yy++) {
+        for (var xx = 0; xx < _inputSize; xx++) {
+          final p = resized.getPixel(xx, yy);
+          pixels.add(p.r.toDouble());
+          pixels.add(p.g.toDouble());
+          pixels.add(p.b.toDouble());
+        }
+      }
+      final n = pixels.length;
+      final mean = pixels.fold<double>(0, (s, v) => s + v) / n;
+      var sqDev = 0.0;
+      for (final v in pixels) {
+        sqDev += (v - mean) * (v - mean);
+      }
+      final std = math.sqrt(sqDev / n);
+      final stdAdj = math.max(std, 1.0 / math.sqrt(n.toDouble()));
+      inTensor = List.generate(
+        1,
+        (_) => List.generate(
+          _inputSize,
+          (yy) => List.generate(
+            _inputSize,
+            (xx) {
+              final p = resized.getPixel(xx, yy);
+              return [
+                (p.r - mean) / stdAdj,
+                (p.g - mean) / stdAdj,
+                (p.b - mean) / stdAdj,
+              ];
+            },
+          ),
         ),
-      ),
-    );
+      );
+    } else {
+      // MobileFaceNet / ArcFace: scale to [-1, 1].
+      inTensor = List.generate(
+        1,
+        (_) => List.generate(
+          _inputSize,
+          (yy) => List.generate(
+            _inputSize,
+            (xx) {
+              final p = resized.getPixel(xx, yy);
+              return [
+                (p.r - 127.5) / 128.0,
+                (p.g - 127.5) / 128.0,
+                (p.b - 127.5) / 128.0,
+              ];
+            },
+          ),
+        ),
+      );
+    }
 
     // Output shape varies by model variant (128/192/512). Read it
     // from the loaded interpreter rather than hard-coding.

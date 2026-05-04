@@ -12,13 +12,16 @@ class DevConstants {
   /// instead of real GPS. Set to false for production builds.
   static const bool useDevLocation = false;
 
-  /// DEV ONLY — when true, FaceRecognitionService.verifyFace returns
-  /// success after a brief delay instead of running a real comparison.
+  /// When true, FaceRecognitionService.verifyFace returns success after
+  /// a brief delay instead of running real on-device identity matching.
   /// The UI surfaces a "DEV MODE: face recognition simulated" banner
   /// whenever this is on, so we never silently fake production logic.
   ///
-  /// TODO: replace with real on-device face matching/liveness SDK.
-  static const bool simulateFaceRecognition = true;
+  /// Now FALSE: a real face-embedding model is bundled at
+  /// assets/models/mobilefacenet.tflite. The engine auto-detects whether
+  /// it's MobileFaceNet (112x112, [-1,1] norm) or FaceNet (160x160, per-
+  /// image standardization) from the loaded input shape.
+  static const bool simulateFaceRecognition = false;
 
   /// Cosine-similarity threshold for treating two face embeddings as
   /// the same person. Sensible defaults for MobileFaceNet sit
