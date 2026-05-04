@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants.dart';
+import '../../core/datetime_utils.dart';
 import '../../core/theme.dart';
 import '../../services/face_recognition_service.dart';
 import '../../services/session_service.dart';
@@ -72,6 +73,87 @@ class ProfileScreen extends StatelessWidget {
   Widget _faceCard(BuildContext context, FaceRecognitionService face,
       SessionService session) {
     final enrolled = face.isEnrolled == true;
+    final canReenroll = face.isReenrollAllowed;
+
+    // Tri-state for the body of the card:
+    //   not enrolled                 → "Enroll Face"
+    //   enrolled + !canReenroll      → locked, must contact HR
+    //   enrolled + canReenroll       → "Re-enroll Face" + warning
+    Widget statusText;
+    Widget? primaryAction;
+    if (!enrolled) {
+      statusText = Text(
+        'No face enrolled yet. Enroll one to enable face-verified attendance.',
+        style: TextStyle(fontSize: 13, color: AppTheme.onSurfaceVariant),
+      );
+      primaryAction = FilledButton.icon(
+        icon: const Icon(Icons.face_rounded),
+        label: const Text('Enroll Face'),
+        onPressed: face.loading
+            ? null
+            : () => _openEnroll(context, face, session),
+      );
+    } else if (!canReenroll) {
+      statusText = Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Face already enrolled. Contact HR to reset face enrollment.',
+            style:
+                TextStyle(fontSize: 13, color: AppTheme.onSurfaceVariant),
+          ),
+          if (face.lastEnrolledAt != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Enrolled on '
+              '${DateTimeUtils.formatLocalDate(face.lastEnrolledAt!.toIso8601String())}.',
+              style: TextStyle(
+                  fontSize: 12, color: AppTheme.onSurfaceVariant),
+            ),
+          ],
+        ],
+      );
+      primaryAction = FilledButton.icon(
+        icon: const Icon(Icons.lock_rounded),
+        label: const Text('Re-enroll Face'),
+        onPressed: null, // disabled
+      );
+    } else {
+      statusText = Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: AppTheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+          border:
+              Border.all(color: AppTheme.primary.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.lock_open_rounded,
+                size: 18, color: AppTheme.primary),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'HR has allowed face re-enrollment. This will replace your current enrolled face.',
+                style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.primary,
+                    fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      );
+      primaryAction = FilledButton.icon(
+        icon: const Icon(Icons.refresh_rounded),
+        label: const Text('Re-enroll Face'),
+        onPressed: face.loading
+            ? null
+            : () => _openEnroll(context, face, session),
+      );
+    }
+
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -81,23 +163,30 @@ class ProfileScreen extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  enrolled ? Icons.verified_user : Icons.face_retouching_off,
+                  enrolled
+                      ? Icons.verified_user
+                      : Icons.face_retouching_off,
                   color: enrolled ? AppTheme.primary : AppTheme.outline,
                 ),
                 const SizedBox(width: 8),
                 const Text('Face Enrollment',
                     style: TextStyle(
                         fontSize: 16, fontWeight: FontWeight.w600)),
+                const Spacer(),
+                if (enrolled)
+                  Icon(
+                    canReenroll
+                        ? Icons.lock_open_rounded
+                        : Icons.lock_rounded,
+                    size: 16,
+                    color: canReenroll
+                        ? AppTheme.primary
+                        : AppTheme.onSurfaceVariant,
+                  ),
               ],
             ),
             const SizedBox(height: 8),
-            Text(
-              enrolled
-                  ? 'Your face is enrolled. The mobile app verifies you on every check-in/out.'
-                  : 'No face enrolled yet. Enroll one to enable face-verified attendance.',
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.onSurfaceVariant),
-            ),
+            statusText,
             if (DevConstants.simulateFaceRecognition) ...[
               const SizedBox(height: 8),
               Row(
@@ -116,31 +205,7 @@ class ProfileScreen extends StatelessWidget {
               ),
             ],
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    icon: Icon(enrolled
-                        ? Icons.refresh_rounded
-                        : Icons.face_rounded),
-                    label: Text(enrolled ? 'Re-enroll Face' : 'Enroll Face'),
-                    onPressed: face.loading
-                        ? null
-                        : () async {
-                            await Navigator.of(context).push<bool>(
-                              MaterialPageRoute(
-                                builder: (_) =>
-                                    const FaceEnrollmentScreen(),
-                              ),
-                            );
-                            if (context.mounted) {
-                              await face.refreshEnrolledStatus(session);
-                            }
-                          },
-                  ),
-                ),
-              ],
-            ),
+            SizedBox(width: double.infinity, child: primaryAction),
             const SizedBox(height: 8),
             OutlinedButton.icon(
               icon: const Icon(Icons.cleaning_services_outlined),
@@ -162,6 +227,18 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openEnroll(BuildContext context,
+      FaceRecognitionService face, SessionService session) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const FaceEnrollmentScreen(),
+      ),
+    );
+    if (context.mounted) {
+      await face.refreshEnrolledStatus(session);
+    }
   }
 
   Widget _row(BuildContext context, String label, String value) {

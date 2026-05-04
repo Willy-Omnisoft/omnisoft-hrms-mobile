@@ -44,6 +44,8 @@ class FaceRecognitionService extends ChangeNotifier {
   }
 
   bool? _enrolled;
+  bool _reenrollAllowed = false;
+  DateTime? _lastEnrolledAt;
   String? _localFacePath;
   bool _loading = false;
 
@@ -59,6 +61,8 @@ class FaceRecognitionService extends ChangeNotifier {
   /// True if we know there's an enrolled face server-side. null until
   /// `refreshEnrolledStatus` runs at least once.
   bool? get isEnrolled => _enrolled;
+  bool get isReenrollAllowed => _reenrollAllowed;
+  DateTime? get lastEnrolledAt => _lastEnrolledAt;
   String? get localFacePath => _localFacePath;
   bool get loading => _loading;
   bool get isSimulated => DevConstants.simulateFaceRecognition;
@@ -87,6 +91,11 @@ class FaceRecognitionService extends ChangeNotifier {
         await _wipeLocalCache();
         _enrolled = false;
       }
+      _reenrollAllowed = res['face_reenroll_allowed'] == true;
+      final lastStr = (res['last_enrolled_at'] ?? '').toString();
+      _lastEnrolledAt = lastStr.isNotEmpty
+          ? DateTime.tryParse(lastStr.replaceFirst(' ', 'T') + 'Z')
+          : null;
       notifyListeners();
     } catch (_) {
       // Leave previous state; UI can still try verify against cache.
@@ -114,6 +123,10 @@ class FaceRecognitionService extends ChangeNotifier {
     await file.writeAsBytes(bytes, flush: true);
     _localFacePath = file.path;
     _enrolled = true;
+    // Server consumed the one-shot permission on success; mirror that
+    // locally so the UI re-locks immediately.
+    _reenrollAllowed = false;
+    _lastEnrolledAt = DateTime.now();
     notifyListeners();
   }
 
@@ -123,6 +136,8 @@ class FaceRecognitionService extends ChangeNotifier {
     await api.clearEnrolledFace();
     await _wipeLocalCache();
     _enrolled = false;
+    _reenrollAllowed = false;
+    _lastEnrolledAt = null;
     notifyListeners();
   }
 

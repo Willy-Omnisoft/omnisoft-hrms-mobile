@@ -60,7 +60,11 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
         _uploading = false;
         // FaceQualityException already implements toString() with the
         // friendly message; everything else gets the raw error trimmed.
-        _error = e.toString().replaceFirst(RegExp(r'^Exception: '), '');
+        var msg = e.toString().replaceFirst(RegExp(r'^Exception: '), '');
+        if (msg.contains('face_reenrollment_not_allowed')) {
+          msg = 'Face re-enrollment is not allowed. Please contact HR.';
+        }
+        _error = msg;
       });
     }
   }
