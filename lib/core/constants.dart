@@ -19,6 +19,17 @@ class DevConstants {
   ///
   /// TODO: replace with real on-device face matching/liveness SDK.
   static const bool simulateFaceRecognition = true;
+
+  /// Cosine-similarity threshold for treating two face embeddings as
+  /// the same person. Sensible defaults for MobileFaceNet sit
+  /// between 0.65 and 0.75; tune once a real embedding model is wired
+  /// up. Has no effect while a real embedding engine isn't loaded.
+  static const double faceMatchThreshold = 0.70;
+
+  /// Minimum side length (px) of the detected face's bounding box,
+  /// relative to the shorter side of the captured image. Rejects
+  /// selfies where the face is too small / far for a confident match.
+  static const double faceMinSizeFraction = 0.20;
 }
 
 class AppConstants {

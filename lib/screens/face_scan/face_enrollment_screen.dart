@@ -58,6 +58,8 @@ class _FaceEnrollmentScreenState extends State<FaceEnrollmentScreen> {
       if (!mounted) return;
       setState(() {
         _uploading = false;
+        // FaceQualityException already implements toString() with the
+        // friendly message; everything else gets the raw error trimmed.
         _error = e.toString().replaceFirst(RegExp(r'^Exception: '), '');
       });
     }
