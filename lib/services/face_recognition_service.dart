@@ -22,26 +22,37 @@ import 'session_service.dart';
 class FaceRecognitionService extends ChangeNotifier {
   static const _cachedFilename = 'enrolled_face.jpg';
 
-  /// Engine selected by DevConstants.simulateFaceRecognition. Lazily
-  /// initialized on first use.
-  FaceRecognitionEngine? _engine;
+  /// Quality gating ALWAYS uses ML Kit so devs can test the real
+  /// "no face / multiple faces / too small / eyes closed" rejections
+  /// even with simulateFaceRecognition=true.
+  final FaceRecognitionEngine _qualityEngine = MLKitFaceRecognitionEngine();
+
+  /// Identity compare engine — simulated in dev, fail-closed in prod.
+  late final FaceRecognitionEngine _compareEngine =
+      DevConstants.simulateFaceRecognition
+          ? SimulatedFaceRecognitionEngine()
+          : MLKitFaceRecognitionEngine();
+
+  bool _enginesReady = false;
+  Future<void> _ensureEnginesReady() async {
+    if (_enginesReady) return;
+    await _qualityEngine.initialize();
+    if (!identical(_qualityEngine, _compareEngine)) {
+      await _compareEngine.initialize();
+    }
+    _enginesReady = true;
+  }
 
   bool? _enrolled;
   String? _localFacePath;
   bool _loading = false;
 
-  Future<FaceRecognitionEngine> _getEngine() async {
-    if (_engine != null) return _engine!;
-    _engine = DevConstants.simulateFaceRecognition
-        ? SimulatedFaceRecognitionEngine()
-        : MLKitFaceRecognitionEngine();
-    await _engine!.initialize();
-    return _engine!;
-  }
-
   @override
   void dispose() {
-    _engine?.dispose();
+    _qualityEngine.dispose();
+    if (!identical(_qualityEngine, _compareEngine)) {
+      _compareEngine.dispose();
+    }
     super.dispose();
   }
 
@@ -89,8 +100,8 @@ class FaceRecognitionService extends ChangeNotifier {
   /// face-quality gate (no face / multiple faces / too small / eyes
   /// closed).
   Future<void> enrollFace(SessionService session, String imagePath) async {
-    final engine = await _getEngine();
-    final quality = await engine.checkQuality(imagePath);
+    await _ensureEnginesReady();
+    final quality = await _qualityEngine.checkQuality(imagePath);
     if (!quality.ok) {
       throw FaceQualityException(quality);
     }
@@ -144,17 +155,18 @@ class FaceRecognitionService extends ChangeNotifier {
       return FaceVerifyResult.notEnrolled();
     }
 
-    final engine = await _getEngine();
+    await _ensureEnginesReady();
 
-    // Quality gate. Always runs — we want concrete "no face / multiple
-    // faces" feedback even in simulate mode.
-    final quality = await engine.checkQuality(liveImagePath);
+    // Quality gate. Always real (ML Kit), regardless of simulate flag,
+    // so devs can test "no face / multiple faces / too small / eyes
+    // closed" rejections without disabling simulation.
+    final quality = await _qualityEngine.checkQuality(liveImagePath);
     if (!quality.ok) {
       return FaceVerifyResult.qualityFail(quality);
     }
 
     final compare =
-        await engine.compare(_localFacePath!, liveImagePath);
+        await _compareEngine.compare(_localFacePath!, liveImagePath);
     if (!compare.implemented) {
       return FaceVerifyResult.error(compare.reason ??
           'On-device identity matching is not yet wired up.');
@@ -165,7 +177,7 @@ class FaceRecognitionService extends ChangeNotifier {
     }
     return FaceVerifyResult.success(
       score: compare.score,
-      simulated: !engine.isProduction,
+      simulated: !_compareEngine.isProduction,
     );
   }
 
