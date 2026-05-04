@@ -37,6 +37,12 @@ android {
             signingConfig signingConfigs.debug
         }
     }
+
+    // Don't compress the bundled .tflite face embedding model — TFLite
+    // mmaps the asset at load time and compression breaks that.
+    androidResources {
+        noCompress 'tflite'
+    }
 }
 
 flutter {

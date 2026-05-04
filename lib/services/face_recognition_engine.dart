@@ -1,7 +1,10 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:google_mlkit_face_detection/google_mlkit_face_detection.dart';
+import 'package:image/image.dart' as img;
+import 'package:tflite_flutter/tflite_flutter.dart';
 import '../core/constants.dart';
 
 // =====================================================================
@@ -201,8 +204,13 @@ class SimulatedFaceRecognitionEngine implements FaceRecognitionEngine {
 // =====================================================================
 
 class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
+  static const _modelAsset = 'assets/models/mobilefacenet.tflite';
+  static const _modelInputSize = 112;
+
   late FaceDetector _detector;
+  Interpreter? _embedder;
   bool _initialized = false;
+  bool _embedderTried = false; // avoid spamming load attempts
 
   @override
   String get name => 'mlkit_face_quality';
@@ -223,6 +231,27 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
       ),
     );
     _initialized = true;
+  }
+
+  /// Lazily load the embedding model. Returns null when missing — the
+  /// caller fails closed cleanly, no crash.
+  Future<Interpreter?> _ensureEmbedder() async {
+    if (_embedder != null) return _embedder;
+    if (_embedderTried) return null;
+    _embedderTried = true;
+    try {
+      _embedder = await Interpreter.fromAsset(_modelAsset);
+      final inShape = _embedder!.getInputTensor(0).shape;
+      final outShape = _embedder!.getOutputTensor(0).shape;
+      debugPrint(
+          'MobileFaceNet loaded — input=$inShape output=$outShape');
+      return _embedder;
+    } catch (e) {
+      debugPrint(
+          'MobileFaceNet model not found at $_modelAsset (or load '
+          'failed): $e — falling back to fail-closed identity match');
+      return null;
+    }
   }
 
   @override
@@ -295,14 +324,73 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
 
   @override
   Future<List<double>?> extractEmbedding(String imagePath) async {
-    // TODO: integrate a TFLite face embedding model (e.g.
-    // MobileFaceNet) and return a 128/192/512-d unit vector here.
-    // Steps:
-    //   1. Detect + crop the face region (ML Kit gives the box already).
-    //   2. Resize to the model's input size (typically 112x112).
-    //   3. Normalize (range [-1,1] for MobileFaceNet).
-    //   4. Run TFLite inference, L2-normalize the output.
-    return null;
+    await initialize();
+    final embedder = await _ensureEmbedder();
+    if (embedder == null) return null;
+
+    // Detect the face so we can crop tightly. Embedding quality
+    // collapses if we feed the whole frame (background dominates).
+    final input = InputImage.fromFilePath(imagePath);
+    final faces = await _detector.processImage(input);
+    if (faces.length != 1) return null;
+
+    final raw = await File(imagePath).readAsBytes();
+    final decoded = img.decodeImage(raw);
+    if (decoded == null) return null;
+
+    // ML Kit's bounding box is in the original image's coordinate
+    // space. Inflate by 20% so we keep some hair / chin context
+    // (face-recognition models like MobileFaceNet are trained on
+    // slightly-padded crops, not tight chin-to-eyebrow boxes).
+    final box = faces.first.boundingBox;
+    final pad = 0.2;
+    final cx = box.center.dx;
+    final cy = box.center.dy;
+    final half = math.max(box.width, box.height) * (0.5 + pad);
+    final x = (cx - half).round().clamp(0, decoded.width - 1);
+    final y = (cy - half).round().clamp(0, decoded.height - 1);
+    final w = (half * 2).round().clamp(1, decoded.width - x);
+    final h = (half * 2).round().clamp(1, decoded.height - y);
+
+    final cropped = img.copyCrop(decoded, x: x, y: y, width: w, height: h);
+    final resized = img.copyResize(cropped,
+        width: _modelInputSize, height: _modelInputSize);
+
+    // Build [1, 112, 112, 3] float32 tensor with [-1, 1] normalization.
+    final inTensor = List.generate(
+      1,
+      (_) => List.generate(
+        _modelInputSize,
+        (yy) => List.generate(
+          _modelInputSize,
+          (xx) {
+            final p = resized.getPixel(xx, yy);
+            return [
+              (p.r - 127.5) / 128.0,
+              (p.g - 127.5) / 128.0,
+              (p.b - 127.5) / 128.0,
+            ];
+          },
+        ),
+      ),
+    );
+
+    // Output shape varies by model variant (128/192/512). Read it
+    // from the loaded interpreter rather than hard-coding.
+    final outShape = embedder.getOutputTensor(0).shape;
+    final outDim = outShape.reduce((a, b) => a * b);
+    final outTensor = List.generate(
+      outShape[0],
+      (_) => List.filled(outDim ~/ outShape[0], 0.0),
+    );
+
+    embedder.run(inTensor, outTensor);
+
+    // L2-normalize so cosine similarity is just a dot product.
+    final flat = (outTensor[0] as List).cast<double>();
+    final norm = math.sqrt(flat.fold<double>(0, (s, v) => s + v * v));
+    if (norm == 0) return null;
+    return flat.map((v) => v / norm).toList(growable: false);
   }
 
   @override
@@ -310,10 +398,31 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
     String enrolledImagePath,
     String liveImagePath,
   ) async {
-    // Quality is verified separately by the service layer before
-    // calling this. The actual identity match awaits TFLite
-    // integration; until then we fail closed.
-    return FaceCompareResult.notImplemented();
+    final enrolled = await extractEmbedding(enrolledImagePath);
+    if (enrolled == null) {
+      // Either the model is missing or the enrolled image no longer
+      // contains a recognisable face. Fail closed.
+      return FaceCompareResult.notImplemented();
+    }
+    final live = await extractEmbedding(liveImagePath);
+    if (live == null) {
+      // Live image has no face / multiple faces — quality gate
+      // should have caught this, but be defensive.
+      return FaceCompareResult.mismatch(0.0);
+    }
+
+    // Cosine similarity = dot product on unit vectors.
+    var dot = 0.0;
+    for (var i = 0; i < enrolled.length && i < live.length; i++) {
+      dot += enrolled[i] * live[i];
+    }
+    final score = dot.clamp(-1.0, 1.0);
+    debugPrint('MobileFaceNet cosine=${score.toStringAsFixed(3)} '
+        'threshold=${DevConstants.faceMatchThreshold}');
+    if (score >= DevConstants.faceMatchThreshold) {
+      return FaceCompareResult.match(score);
+    }
+    return FaceCompareResult.mismatch(score);
   }
 
   @override
@@ -322,6 +431,9 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
       await _detector.close();
       _initialized = false;
     }
+    _embedder?.close();
+    _embedder = null;
+    _embedderTried = false;
   }
 }
 
