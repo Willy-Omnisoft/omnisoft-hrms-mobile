@@ -4,6 +4,7 @@ import 'home_screen.dart';
 import '../leave/leave_screen.dart';
 import '../leave_history/leave_history_screen.dart';
 import '../profile/profile_screen.dart';
+import '../../services/face_recognition_service.dart';
 import '../../services/holiday_service.dart';
 import '../../services/session_service.dart';
 
@@ -35,6 +36,9 @@ class _HomeShellState extends State<HomeShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final session = context.read<SessionService>();
       context.read<HolidayService>().loadFromSession(session);
+      context
+          .read<FaceRecognitionService>()
+          .refreshEnrolledStatus(session);
     });
   }
 

@@ -107,6 +107,26 @@ class OmniMobileApi {
     });
   }
 
+  // -- Face enrollment --
+
+  Future<Map<String, dynamic>> getEnrolledFace() async {
+    return _post('/face/enrolled');
+  }
+
+  Future<Map<String, dynamic>> enrollFace({
+    required String faceImageBase64,
+    String filename = 'enrollment.jpg',
+  }) async {
+    return _post('/face/enroll', {
+      'face_image_base64': faceImageBase64,
+      'filename': filename,
+    });
+  }
+
+  Future<Map<String, dynamic>> clearEnrolledFace() async {
+    return _post('/face/clear');
+  }
+
   Future<List<LeaveRecord>> getLeaveHistory() async {
     final data = await _post('/leave/history');
     final list = data['leaves'] as List<dynamic>;

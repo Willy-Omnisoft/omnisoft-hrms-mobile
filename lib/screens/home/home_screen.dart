@@ -6,6 +6,7 @@ import '../../core/theme.dart';
 import '../../models/attendance_status.dart';
 import '../../models/face_capture_result.dart';
 import '../../services/device_service.dart';
+import '../../services/face_recognition_service.dart';
 import '../../services/location_service.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
@@ -79,18 +80,41 @@ class HomeScreenState extends State<HomeScreen> {
     }
     setState(() => _gpsHint = loc.isDevFallback ? 'DEV location' : 'GPS ready');
 
-    // Step 2 — Face capture
+    // Step 2 — Face capture + on-device verification against the
+    // employee's enrolled face. We only forward face_verified=true to
+    // the server when verification actually passes.
+    final faceSvc = context.read<FaceRecognitionService>();
+    if (faceSvc.isEnrolled != true) {
+      // Make sure status is fresh — they may have enrolled in another
+      // session since the app was last opened.
+      await faceSvc.refreshEnrolledStatus(context.read<SessionService>());
+    }
+    if (!mounted) return;
+    if (faceSvc.isEnrolled != true) {
+      setState(() => _acting = false);
+      _showError(
+          'No enrolled face. Open Profile → Enroll Face before checking in.');
+      return;
+    }
+
     final faceResult = await Navigator.of(context).push<FaceCaptureResult>(
       MaterialPageRoute(builder: (_) => const FaceCaptureScreen()),
     );
-    if (!mounted) {
-      return;
-    }
+    if (!mounted) return;
     if (faceResult == null || !faceResult.success) {
       setState(() => _acting = false);
       if (faceResult?.errorMessage != null) {
         _showError(faceResult!.errorMessage!);
       }
+      return;
+    }
+
+    final verify = await faceSvc.verifyFace(faceResult.imagePath!);
+    if (!mounted) return;
+    if (!verify.ok) {
+      setState(() => _acting = false);
+      _showError(verify.errorMessage ??
+          'Face not recognized. Please try again.');
       return;
     }
 
@@ -301,10 +325,29 @@ class HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         _gpsIndicator(),
+        if (DevConstants.simulateFaceRecognition) ...[
+          const SizedBox(height: 8),
+          _faceSimBanner(),
+        ],
         if (_lastDistance != null && _lastAllowedRadius != null) ...[
           const SizedBox(height: 12),
           _geofenceInfoCard(),
         ],
+      ],
+    );
+  }
+
+  Widget _faceSimBanner() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Icon(Icons.developer_mode, size: 14, color: Colors.orange),
+        const SizedBox(width: 4),
+        Text('DEV MODE: face recognition simulated',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.orange,
+                  fontWeight: FontWeight.w500,
+                )),
       ],
     );
   }

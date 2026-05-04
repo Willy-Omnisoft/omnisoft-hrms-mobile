@@ -11,6 +11,14 @@ class DevConstants {
   /// DEV ONLY — when true, always use fallback coordinates
   /// instead of real GPS. Set to false for production builds.
   static const bool useDevLocation = false;
+
+  /// DEV ONLY — when true, FaceRecognitionService.verifyFace returns
+  /// success after a brief delay instead of running a real comparison.
+  /// The UI surfaces a "DEV MODE: face recognition simulated" banner
+  /// whenever this is on, so we never silently fake production logic.
+  ///
+  /// TODO: replace with real on-device face matching/liveness SDK.
+  static const bool simulateFaceRecognition = true;
 }
 
 class AppConstants {
