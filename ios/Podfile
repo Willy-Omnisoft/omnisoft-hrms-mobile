@@ -1,5 +1,5 @@
-# Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# google_mlkit_face_detection 0.13 / google_mlkit_commons require iOS 15.5+.
+platform :ios, '15.5'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -40,5 +40,19 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
+    target.build_configurations.each do |config|
+      # Force every pod target up to 15.5 so individual pods (like
+      # GoogleMLKit) don't get installed with a lower target that
+      # then fails to link.
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
+
+      # TensorFlowLiteC and a few MLKit pods don't ship arm64 slices
+      # for the iOS Simulator. On Apple Silicon Macs the simulator
+      # runs arm64 by default, so we exclude arm64 from the simulator
+      # build (Xcode then runs the x86_64 slice under Rosetta). On
+      # device builds (real iPhones) this exclusion is ignored, so it
+      # doesn't affect production.
+      config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
+    end
   end
 end
