@@ -167,18 +167,26 @@ class FaceRecognitionService extends ChangeNotifier {
 
     final compare =
         await _compareEngine.compare(_localFacePath!, liveImagePath);
+    final FaceVerifyResult result;
     if (!compare.implemented) {
-      return FaceVerifyResult.error(compare.reason ??
+      result = FaceVerifyResult.error(compare.reason ??
           'On-device identity matching is not yet wired up.');
-    }
-    if (!compare.ok) {
-      return FaceVerifyResult.mismatch(compare.score ?? 0,
+    } else if (!compare.ok) {
+      result = FaceVerifyResult.mismatch(compare.score ?? 0,
           reason: compare.reason);
+    } else {
+      result = FaceVerifyResult.success(
+        score: compare.score,
+        simulated: !_compareEngine.isProduction,
+      );
     }
-    return FaceVerifyResult.success(
-      score: compare.score,
-      simulated: !_compareEngine.isProduction,
+    debugPrint(
+      'verifyFace result ok=${result.ok} '
+      'score=${result.score?.toStringAsFixed(2) ?? "n/a"} '
+      'simulated=${result.simulated} '
+      'error=${result.errorMessage ?? "-"}',
     );
+    return result;
   }
 
   OmniMobileApi _api(SessionService s) => OmniMobileApi(

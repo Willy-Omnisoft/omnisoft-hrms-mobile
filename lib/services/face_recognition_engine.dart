@@ -237,9 +237,12 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
     final faces = await _detector.processImage(input);
 
     if (faces.isEmpty) {
+      debugPrint('ML Kit faces=0 result=noFace');
       return FaceQualityResult.fail(FaceQualityIssue.noFace);
     }
     if (faces.length > 1) {
+      debugPrint(
+          'ML Kit faces=${faces.length} result=multipleFaces');
       return FaceQualityResult.fail(FaceQualityIssue.multipleFaces);
     }
 
@@ -254,6 +257,9 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
       final w = face.boundingBox.width.abs();
       boxFraction = w / shortSide;
       if (boxFraction < DevConstants.faceMinSizeFraction) {
+        debugPrint(
+            'ML Kit faces=1 box=${boxFraction.toStringAsFixed(2)} '
+            'result=faceTooSmall');
         return FaceQualityResult.fail(FaceQualityIssue.faceTooSmall);
       }
     }
@@ -261,12 +267,25 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
     final leftOpen = face.leftEyeOpenProbability;
     final rightOpen = face.rightEyeOpenProbability;
     if (leftOpen != null && rightOpen != null) {
-      // Both probabilities below 0.4 → almost certainly closed.
-      if (leftOpen < 0.4 && rightOpen < 0.4) {
+      // Average eye-open probability — more robust than AND/OR since
+      // both eyes are usually affected similarly by squint / lashes.
+      // <0.5 means "more likely closed than open".
+      final avgOpen = (leftOpen + rightOpen) / 2.0;
+      if (avgOpen < 0.5) {
+        debugPrint(
+          'ML Kit faces=1 box=${boxFraction?.toStringAsFixed(2)} '
+          'leftEye=${leftOpen.toStringAsFixed(2)} '
+          'rightEye=${rightOpen.toStringAsFixed(2)} result=eyesClosed',
+        );
         return FaceQualityResult.fail(FaceQualityIssue.eyesClosed);
       }
     }
 
+    debugPrint(
+      'ML Kit faces=1 box=${boxFraction?.toStringAsFixed(2)} '
+      'leftEye=${leftOpen?.toStringAsFixed(2) ?? "null"} '
+      'rightEye=${rightOpen?.toStringAsFixed(2) ?? "null"} result=ok',
+    );
     return FaceQualityResult.ok(
       boxFraction: boxFraction,
       leftEye: leftOpen,
