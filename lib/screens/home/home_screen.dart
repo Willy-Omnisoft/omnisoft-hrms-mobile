@@ -24,6 +24,10 @@ class HomeScreenState extends State<HomeScreen> {
   String? _error;
   bool _acting = false;
   String _gpsHint = '';
+  // Last outside-geofence error info — kept on screen until the next
+  // successful check-in/out. null when not applicable.
+  double? _lastDistance;
+  double? _lastAllowedRadius;
   final _locationService = LocationService();
   final _deviceService = DeviceService();
 
@@ -115,6 +119,10 @@ class HomeScreenState extends State<HomeScreen> {
 
       await refresh();
       if (mounted) {
+        setState(() {
+          _lastDistance = null;
+          _lastAllowedRadius = null;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(wasCheckedIn
@@ -125,7 +133,15 @@ class HomeScreenState extends State<HomeScreen> {
         );
       }
     } catch (e) {
-      if (mounted) _showError(_humanizeApiError(e));
+      if (mounted) {
+        if (e is ApiException && e.errorCode == 'outside_geofence') {
+          setState(() {
+            _lastDistance = e.distanceFromOffice;
+            _lastAllowedRadius = e.allowedRadius;
+          });
+        }
+        _showError(_humanizeApiError(e));
+      }
     } finally {
       if (mounted) setState(() => _acting = false);
     }
@@ -139,6 +155,9 @@ class HomeScreenState extends State<HomeScreen> {
 
   String _humanizeApiError(Object e) {
     final raw = e.toString();
+    if (raw.contains('office_geofence_not_configured')) {
+      return 'No office location is set for your employee. Ask HR to configure the work address.';
+    }
     if (raw.contains('outside_geofence')) {
       return 'You are outside the allowed office location.';
     }
@@ -282,7 +301,50 @@ class HomeScreenState extends State<HomeScreen> {
         ),
         const SizedBox(height: 16),
         _gpsIndicator(),
+        if (_lastDistance != null && _lastAllowedRadius != null) ...[
+          const SizedBox(height: 12),
+          _geofenceInfoCard(),
+        ],
       ],
+    );
+  }
+
+  Widget _geofenceInfoCard() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(Icons.location_off, size: 18, color: AppTheme.error),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Outside office geofence',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.error),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Distance: ${_lastDistance!.toStringAsFixed(0)} m  ·  '
+                  'Allowed: ${_lastAllowedRadius!.toStringAsFixed(0)} m',
+                  style: TextStyle(
+                      fontSize: 12, color: AppTheme.onSurfaceVariant),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 

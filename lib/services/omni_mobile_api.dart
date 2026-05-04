@@ -33,7 +33,7 @@ class OmniMobileApi {
     );
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (data['success'] != true) {
-      throw ApiException(data['error']?.toString() ?? 'Unknown error', data);
+      throw ApiException.fromBody(data);
     }
     return data;
   }
@@ -184,10 +184,41 @@ class CalendarInfoResponse {
 }
 
 class ApiException implements Exception {
-  final String error;
+  /// Server-side error code, e.g. "outside_geofence",
+  /// "office_geofence_not_configured", "face_not_verified".
+  final String errorCode;
+
+  /// Whole response body for inspection by the UI.
   final Map<String, dynamic>? data;
-  ApiException(this.error, [this.data]);
+
+  /// Populated for outside_geofence — meters from office at submit time.
+  final double? distanceFromOffice;
+
+  /// Populated for outside_geofence — meters of allowed radius.
+  final double? allowedRadius;
+
+  ApiException(
+    this.errorCode, {
+    this.data,
+    this.distanceFromOffice,
+    this.allowedRadius,
+  });
+
+  /// Backwards-compatible getter for callers that still inspect
+  /// `e.toString()` for keyword matching.
+  String get error => errorCode;
+
+  factory ApiException.fromBody(Map<String, dynamic> body) {
+    final code = body['error']?.toString() ?? 'Unknown error';
+    return ApiException(
+      code,
+      data: body,
+      distanceFromOffice:
+          (body['distance_from_office'] as num?)?.toDouble(),
+      allowedRadius: (body['allowed_radius'] as num?)?.toDouble(),
+    );
+  }
 
   @override
-  String toString() => error;
+  String toString() => errorCode;
 }

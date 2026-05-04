@@ -10,7 +10,7 @@ class DevConstants {
 
   /// DEV ONLY — when true, always use fallback coordinates
   /// instead of real GPS. Set to false for production builds.
-  static const bool useDevLocation = true;
+  static const bool useDevLocation = false;
 }
 
 class AppConstants {
