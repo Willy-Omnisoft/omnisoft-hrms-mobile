@@ -6,6 +6,7 @@ import '../../services/device_service.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../home/home_shell.dart';
+import 'company_settings_screen.dart';
 
 /// Email/password login. Reached after CompanyCodeScreen has resolved
 /// the SaaS routing (clientUrl + clientDb). On success, calls
@@ -111,13 +112,21 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sign In'),
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () {
-            // Allow user to switch company code.
-            Navigator.of(context).maybePop();
-          },
-        ),
+        // Suppress the implicit back arrow — there's nothing to go back
+        // to here (CompanyCodeScreen was pushReplacement'd). The gear
+        // action below is the deliberate way to change company.
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            tooltip: 'Company settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const CompanySettingsScreen(),
+              ),
+            ),
+          ),
+        ],
       ),
       body: SafeArea(
         child: Center(
@@ -148,14 +157,23 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  session.companyCode.isNotEmpty
-                      ? '${session.companyCode}  ·  ${session.clientUrl}'
-                      : '',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppTheme.onSurfaceVariant,
-                      ),
-                ),
+                if (session.companyCode.isNotEmpty)
+                  Text(
+                    '${session.companyCode}  ·  ${session.clientUrl}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.onSurfaceVariant,
+                        ),
+                  ),
+                if (session.clientDb.isNotEmpty) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    session.clientDb,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppTheme.onSurfaceVariant,
+                          fontSize: 11,
+                        ),
+                  ),
+                ],
                 const SizedBox(height: 32),
                 TextField(
                   controller: _loginController,
