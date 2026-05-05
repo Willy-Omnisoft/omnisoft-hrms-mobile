@@ -4,7 +4,7 @@ import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../services/saas_service.dart';
 import '../../services/session_service.dart';
-import '../token_login/token_login_screen.dart';
+import '../login/login_screen.dart';
 
 class CompanyCodeScreen extends StatefulWidget {
   const CompanyCodeScreen({super.key});
@@ -39,11 +39,12 @@ class _CompanyCodeScreenState extends State<CompanyCodeScreen> {
         saasUrl: _saasUrlController.text.trim(),
         companyCode: info.companyCode,
         clientUrl: info.odooUrl,
+        clientDb: info.database,
       );
 
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const TokenLoginScreen()),
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
       );
     } catch (e) {
       setState(() => _error = e.toString());

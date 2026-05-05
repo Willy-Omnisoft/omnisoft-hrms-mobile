@@ -21,11 +21,10 @@ dependencies:
   open_filex: ^4.5.0
   path_provider: ^2.1.5
   camera: ^0.11.0
-  # camera_avfoundation 0.9.23+ uses iOS 18 SDK API surface
-  # (AVCaptureSession.wasInterruptedNotification etc.) that doesn't
-  # compile under Xcode 15 / iOS 17. Pin to a version that works on
-  # current Xcode. Direct dep so the version isn't overridden by
-  # camera's transitive resolution.
+  # camera_avfoundation 0.9.23+ uses iOS 18 SDK API surface that
+  # does not compile under older Xcode. Xcode 26 has it, but
+  # leaving this pin in place is harmless and keeps builds
+  # reproducible across machines on different Xcode versions.
   camera_avfoundation: 0.9.18+9
   device_info_plus: ^11.5.0
   google_mlkit_face_detection: ^0.13.0

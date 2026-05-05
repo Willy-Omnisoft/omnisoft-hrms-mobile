@@ -135,25 +135,24 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Leave History')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: refresh,
-                  child: _leaves.isEmpty
-                      ? ListView(children: const [
-                          SizedBox(height: 100),
-                          Center(child: Text('No leave records yet')),
-                        ])
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _leaves.length,
-                          itemBuilder: (_, i) => _buildItem(_leaves[i]),
-                        ),
-                ),
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(child: Text(_error!));
+    }
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: _leaves.isEmpty
+          ? ListView(children: const [
+              SizedBox(height: 100),
+              Center(child: Text('No leave records yet')),
+            ])
+          : ListView.builder(
+              padding: const EdgeInsets.all(16),
+              itemCount: _leaves.length,
+              itemBuilder: (_, i) => _buildItem(_leaves[i]),
+            ),
     );
   }
 

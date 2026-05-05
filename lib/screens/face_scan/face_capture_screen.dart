@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../models/face_capture_result.dart';
 
@@ -29,6 +30,20 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
   @override
   void initState() {
     super.initState();
+    if (DevConstants.simulateFaceRecognition) {
+      // iOS simulator has no camera at all (real or simulated). When
+      // dev simulate-face is on, skip the capture UI entirely and
+      // return a placeholder path. FaceRecognitionService.verifyFace
+      // also short-circuits when simulating, so the path is never
+      // actually read.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        Navigator.of(context).pop(
+          FaceCaptureResult.success('/dev/null/simulated.jpg'),
+        );
+      });
+      return;
+    }
     _initFuture = _initCamera();
   }
 
@@ -112,6 +127,12 @@ class _FaceCaptureScreenState extends State<FaceCaptureScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // When simulating, initState is already arranging an immediate
+    // pop. Render a black placeholder for the single frame before
+    // that pop runs.
+    if (DevConstants.simulateFaceRecognition) {
+      return const Scaffold(backgroundColor: Colors.black);
+    }
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(

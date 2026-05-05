@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'home_screen.dart';
+import '../history/history_shell.dart';
 import '../leave/leave_screen.dart';
-import '../leave_history/leave_history_screen.dart';
 import '../profile/profile_screen.dart';
 import '../../services/face_recognition_service.dart';
 import '../../services/holiday_service.dart';
@@ -20,7 +20,7 @@ class _HomeShellState extends State<HomeShell> {
 
   final _homeKey = GlobalKey<HomeScreenState>();
   final _leaveKey = GlobalKey<LeaveScreenState>();
-  final _historyKey = GlobalKey<LeaveHistoryScreenState>();
+  final _historyKey = GlobalKey<HistoryShellState>();
 
   late final List<Widget> _screens;
 
@@ -30,7 +30,7 @@ class _HomeShellState extends State<HomeShell> {
     _screens = [
       HomeScreen(key: _homeKey),
       LeaveScreen(key: _leaveKey),
-      LeaveHistoryScreen(key: _historyKey),
+      HistoryShell(key: _historyKey),
       const ProfileScreen(),
     ];
     WidgetsBinding.instance.addPostFrameCallback((_) {

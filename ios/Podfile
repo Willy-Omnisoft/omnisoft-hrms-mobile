@@ -46,12 +46,12 @@ post_install do |installer|
       # then fails to link.
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.5'
 
-      # TensorFlowLiteC and a few MLKit pods don't ship arm64 slices
-      # for the iOS Simulator. On Apple Silicon Macs the simulator
-      # runs arm64 by default, so we exclude arm64 from the simulator
-      # build (Xcode then runs the x86_64 slice under Rosetta). On
-      # device builds (real iPhones) this exclusion is ignored, so it
-      # doesn't affect production.
+      # MLKitFaceDetection's iOS pod ships without arm64-simulator
+      # slices, so we exclude arm64 from simulator builds and let
+      # Xcode run the x86_64 slice under Rosetta. This requires an
+      # iOS 17 or 18 simulator runtime — iOS 26+ simulators on
+      # Apple Silicon refuse to launch x86_64 / Rosetta builds.
+      # Real iPhone / iPad builds are unaffected.
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
     end
   end

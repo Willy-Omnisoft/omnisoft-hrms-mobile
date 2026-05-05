@@ -4,8 +4,9 @@ import '../../core/constants.dart';
 import '../../core/datetime_utils.dart';
 import '../../core/theme.dart';
 import '../../services/face_recognition_service.dart';
+import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
-import '../company_code/company_code_screen.dart';
+import '../login/login_screen.dart';
 import '../face_scan/face_enrollment_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -26,19 +27,21 @@ class ProfileScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  _row(context, 'User',
+                      session.userName.isNotEmpty
+                          ? '${session.userName} (${session.userLogin})'
+                          : '—'),
+                  const Divider(height: 24),
+                  _row(context, 'Employee',
+                      session.employeeName.isNotEmpty
+                          ? session.employeeName
+                          : '—'),
+                  const Divider(height: 24),
                   _row(context, 'Company Code', session.companyCode),
                   const Divider(height: 24),
                   _row(context, 'Client URL', session.clientUrl),
                   const Divider(height: 24),
                   _row(context, 'Database', session.clientDb),
-                  const Divider(height: 24),
-                  _row(
-                    context,
-                    'Token',
-                    session.token.isNotEmpty
-                        ? '${session.token.substring(0, 8)}...'
-                        : '—',
-                  ),
                   const Divider(height: 24),
                   _row(context, 'App Version', AppConstants.appVersion),
                 ],
@@ -54,16 +57,7 @@ class ProfileScreen extends StatelessWidget {
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.error,
             ),
-            onPressed: () async {
-              await session.logout();
-              if (context.mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(
-                      builder: (_) => const CompanyCodeScreen()),
-                  (_) => false,
-                );
-              }
-            },
+            onPressed: () => _logout(context, session),
           ),
         ],
       ),
@@ -227,6 +221,28 @@ class ProfileScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _logout(BuildContext context, SessionService session) async {
+    // Best-effort server-side revocation; even if it fails (network
+    // down, expired session), we still wipe the local copy.
+    try {
+      final api = OmniMobileApi(
+        baseUrl: session.clientUrl,
+        db: session.clientDb,
+        token: session.token,
+      );
+      await api.logout();
+    } catch (_) {
+      // ignored — local clear runs regardless
+    }
+    await session.clearSession();
+    if (context.mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginScreen()),
+        (_) => false,
+      );
+    }
   }
 
   Future<void> _openEnroll(BuildContext context,

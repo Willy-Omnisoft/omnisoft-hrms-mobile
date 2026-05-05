@@ -2,15 +2,23 @@
 /// These will be removed or hidden behind a build flag before release.
 class DevConstants {
   static const String defaultCompanyCode = 'DEMO';
-  static const String defaultSaasUrl = 'http://localhost:8069';
-  static const String defaultToken =
-      'vTZnZiT7Dl0JBYNfwB8pV7oqqbS0gN73N3ZpiUs0nOk';
+  // Override at run time:
+  //   flutter run --dart-define=SAAS_URL=http://192.168.1.17:8069
+  // Default is localhost so iOS simulator + macOS desktop builds keep working.
+  static const String defaultSaasUrl = String.fromEnvironment(
+    'SAAS_URL',
+    defaultValue: 'http://localhost:8069',
+  );
+  /// Pre-fill on the login screen so devs don't have to retype each
+  /// hot-restart. Empty in production builds is fine.
+  static const String defaultLogin = 'test@demo.com';
+
   static const double fallbackLatitude = 1.2780;
   static const double fallbackLongitude = 103.8450;
 
   /// DEV ONLY — when true, always use fallback coordinates
   /// instead of real GPS. Set to false for production builds.
-  static const bool useDevLocation = false;
+  static const bool useDevLocation = true;
 
   /// When true, FaceRecognitionService.verifyFace returns success after
   /// a brief delay instead of running real on-device identity matching.
@@ -21,7 +29,7 @@ class DevConstants {
   /// assets/models/mobilefacenet.tflite. The engine auto-detects whether
   /// it's MobileFaceNet (112x112, [-1,1] norm) or FaceNet (160x160, per-
   /// image standardization) from the loaded input shape.
-  static const bool simulateFaceRecognition = false;
+  static const bool simulateFaceRecognition = true;
 
   /// Cosine-similarity threshold for treating two face embeddings as
   /// the same person. Sensible defaults for MobileFaceNet sit

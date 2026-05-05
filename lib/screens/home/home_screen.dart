@@ -131,6 +131,7 @@ class HomeScreenState extends State<HomeScreen> {
           longitude: loc.longitude!,
           faceVerified: faceResult.faceVerified,
           deviceId: deviceId,
+          devLocation: DevConstants.useDevLocation,
         );
       } else {
         await api.checkIn(
@@ -138,6 +139,7 @@ class HomeScreenState extends State<HomeScreen> {
           longitude: loc.longitude!,
           faceVerified: faceResult.faceVerified,
           deviceId: deviceId,
+          devLocation: DevConstants.useDevLocation,
         );
       }
 
