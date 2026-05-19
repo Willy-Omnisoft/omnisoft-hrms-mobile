@@ -8,7 +8,69 @@ import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
 import '../../widgets/auto_pickers.dart';
 import '../../widgets/document_picker_field.dart';
+import '../../widgets/feature_locked_pane.dart';
+import '../../widgets/omni_app_bar.dart';
+import '../../widgets/primary_button.dart';
 import '../../widgets/range_picker_dialog.dart';
+import '../home/home_shell.dart';
+
+/// Renders the remaining-balance indicator for a leave type. Returns
+/// null when the type carries no balance info (server didn't send the
+/// field — e.g. older connector). `longForm: true` produces the verbose
+/// sheet header subtitle; `longForm: false` produces the compact
+/// list-tile pill. Suffix follows the type's `requestUnit` (h for
+/// hour-types, d otherwise). Color is muted for normal balances, red
+/// when depleted.
+({String label, Color color})? _balanceVisual(
+  LeaveType t, {
+  required bool longForm,
+}) {
+  final unitNoun = _unitNounLong(t.requestUnit);
+  if (!t.requiresAllocation) {
+    return (
+      label: longForm ? 'Unlimited $unitNoun available' : 'Unlimited',
+      color: AppTheme.onSurfaceVariant,
+    );
+  }
+  final n = t.virtualRemainingLeaves;
+  if (n == null) return null;
+  final suffix = _unitSuffix(t.requestUnit);
+  if (n <= 0) {
+    return (
+      label: longForm ? 'No $unitNoun remaining' : '0$suffix left',
+      color: AppTheme.error,
+    );
+  }
+  final s = n == n.roundToDouble()
+      ? n.toInt().toString()
+      : n.toStringAsFixed(1);
+  return (
+    label: longForm ? '$s $unitNoun remaining' : '$s$suffix left',
+    color: AppTheme.onSurfaceVariant,
+  );
+}
+
+String _unitSuffix(String requestUnit) {
+  switch (requestUnit) {
+    case 'hour':
+      return 'h';
+    case 'half_day':
+    case 'day':
+    default:
+      return 'd';
+  }
+}
+
+String _unitNounLong(String requestUnit) {
+  switch (requestUnit) {
+    case 'hour':
+      return 'hours';
+    case 'half_day':
+    case 'day':
+    default:
+      return 'days';
+  }
+}
 
 class LeaveScreen extends StatefulWidget {
   const LeaveScreen({super.key});
@@ -49,98 +111,143 @@ class LeaveScreenState extends State<LeaveScreen> {
     }
   }
 
-  void _openApplyForm(LeaveType type) {
-    showModalBottomSheet(
+  void _openApplyForm(LeaveType type) async {
+    // Sheet returns the new leave's id on a successful submit (null
+    // when the user dismissed without submitting). Doing the post-
+    // submit work (snackbar + navigate to History) HERE — rather than
+    // inside the sheet — is what keeps both lookups working. The
+    // sheet uses useRootNavigator: true so it lives on the root
+    // Navigator, OUTSIDE HomeShell's subtree. From inside the sheet,
+    // ScaffoldMessenger.of(context) returns MaterialApp's default
+    // messenger (no descendant Scaffolds → showSnackBar asserts) and
+    // findAncestorStateOfType<HomeShellState>() returns null. This
+    // screen's context IS inside HomeShell, so both resolve cleanly.
+    final leaveId = await showModalBottomSheet<int>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      useRootNavigator: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       builder: (_) => _ApplyLeaveSheet(leaveType: type),
     );
+    // DONE pops with null → stay on Leave tab. VIEW IN HISTORY pops
+    // with a positive leave id → navigate. No snackbar — the in-sheet
+    // receipt is the user's confirmation; doubling it with a banner
+    // would be noise.
+    if (!mounted || leaveId == null || leaveId <= 0) return;
+    final shell = context.findAncestorStateOfType<HomeShellState>();
+    await shell?.navigateToLeave(leaveId);
   }
 
   @override
   Widget build(BuildContext context) {
+    final session = context.watch<SessionService>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Leave')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: refresh,
-                  child: _buildList(),
-                ),
+      appBar: const OmniAppBar(title: 'Leave'),
+      body: !session.featureTimeOff
+          ? const FeatureLockedPane(
+              featureName: 'Time Off',
+              subtitle: 'Your subscription does not include leave '
+                  'application. Contact your administrator to upgrade.',
+            )
+          : _loading
+              ? const Center(child: CircularProgressIndicator())
+              : _error != null
+                  ? Center(child: Text(_error!))
+                  : RefreshIndicator(
+                      onRefresh: refresh,
+                      child: _buildList(),
+                    ),
     );
   }
 
   Widget _buildList() {
-    // Group by category
-    final groups = <String, List<LeaveType>>{};
-    for (final t in _types) {
-      groups.putIfAbsent(t.mobileCategory, () => []).add(t);
-    }
-    final categoryOrder = [
-      'annual',
-      'medical',
-      'family',
-      'unpaid',
-      'compassionate',
-      'other'
-    ];
-    final sorted = categoryOrder.where((c) => groups.containsKey(c)).toList();
-
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        for (final cat in sorted) ...[
-          Padding(
-            padding: const EdgeInsets.only(top: 12, bottom: 8, left: 4),
-            child: Text(
-              _categoryLabel(cat),
-              style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    color: AppTheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w600,
-                  ),
+    // Flat list ordered by Odoo's hr.leave.type.sequence — the
+    // connector returns types in `sequence asc, id asc` order, so
+    // we render them as received. HR controls ordering by drag-
+    // reordering in the Odoo admin list view; no mobile release
+    // needed when the order changes.
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+      itemCount: _types.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
+      itemBuilder: (_, i) {
+        final type = _types[i];
+        return Opacity(
+          // Exhausted-allocation tiles fade in place. The red
+          // "0d left" badge in _tileSubtitle is the explanation;
+          // onTap is gated below so the user can't submit a leave
+          // the server would reject.
+          opacity: _isExhausted(type) ? 0.55 : 1.0,
+          child: Card(
+            child: ListTile(
+              leading: CircleAvatar(
+                backgroundColor:
+                    AppTheme.primary.withValues(alpha: 0.1),
+                child: Icon(
+                  _categoryIcon(type.mobileCategory),
+                  color: AppTheme.primary,
+                ),
+              ),
+              title: Text(type.name),
+              subtitle: _tileSubtitle(type),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _isExhausted(type)
+                  ? null
+                  : () => _openApplyForm(type),
             ),
           ),
-          for (final type in groups[cat]!)
-            Card(
-              child: ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: AppTheme.primary.withOpacity(0.1),
-                  child: Icon(_categoryIcon(cat), color: AppTheme.primary),
-                ),
-                title: Text(type.name),
-                subtitle: type.mobileRequiresDocument
-                    ? const Text('Document required',
-                        style: TextStyle(fontSize: 12, color: AppTheme.error))
-                    : null,
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () => _openApplyForm(type),
-              ),
-            ),
-        ],
-      ],
+        );
+      },
     );
   }
 
-  String _categoryLabel(String cat) {
-    switch (cat) {
-      case 'annual':
-        return 'Annual';
-      case 'medical':
-        return 'Medical';
-      case 'family':
-        return 'Family';
-      case 'unpaid':
-        return 'Unpaid';
-      case 'compassionate':
-        return 'Compassionate';
-      default:
-        return 'Other';
-    }
+  /// True when this leave type has an allocation that's been used
+  /// up. Unlimited (`requiresAllocation == false`) types are never
+  /// exhausted. Null balance (rare server quirk where the computed
+  /// field didn't populate) is also treated as not-exhausted — we
+  /// let the user try and rely on the server's check rather than
+  /// silently disabling.
+  bool _isExhausted(LeaveType t) =>
+      t.requiresAllocation &&
+      t.virtualRemainingLeaves != null &&
+      t.virtualRemainingLeaves! <= 0;
+
+  /// Combines the balance pill and the optional "Document required"
+  /// note into a single subtitle widget. Returns null when neither
+  /// applies — letting the ListTile collapse to single-line height.
+  Widget? _tileSubtitle(LeaveType type) {
+    final balance = _balanceVisual(type, longForm: false);
+    final hasDoc = type.mobileRequiresDocument;
+    if (balance == null && !hasDoc) return null;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (balance != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text(
+              balance.label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: balance.color,
+              ),
+            ),
+          ),
+        if (hasDoc)
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Text(
+              'Document required',
+              style: TextStyle(fontSize: 12, color: AppTheme.error),
+            ),
+          ),
+      ],
+    );
   }
 
   IconData _categoryIcon(String cat) {
@@ -180,6 +287,10 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
   PickedDocument? _document;
   bool _submitting = false;
   String? _error;
+  // When set, the sheet is in success-receipt mode (form hidden,
+  // receipt shown). Holds the leave id returned by the connector so
+  // VIEW IN HISTORY can pass it back to the parent for highlight.
+  int? _submittedLeaveId;
 
   bool get _isHalfDay => widget.leaveType.requestUnit == 'half_day';
   bool get _isHourly => widget.leaveType.requestUnit == 'hour';
@@ -316,7 +427,7 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         db: session.clientDb,
         token: session.token,
       );
-      await api.applyLeave(
+      final response = await api.applyLeave(
         holidayStatusId: widget.leaveType.id,
         dateFrom: DateFormat('yyyy-MM-dd').format(_dateFrom),
         dateTo: DateFormat('yyyy-MM-dd').format(
@@ -329,15 +440,14 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
         attachment: _document?.toApiJson(),
       );
       if (!mounted) return;
-      Navigator.of(context).pop();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Leave submitted successfully'),
-          backgroundColor: AppTheme.primary,
-        ),
-      );
-    } catch (e) {
+      // Don't pop yet — transition to the in-sheet receipt. The user
+      // sees a confirmation of what they just submitted (Type / Dates
+      // / Reason / Approver / Reference) and then chooses where to go
+      // via the DONE or VIEW IN HISTORY buttons in `_buildSuccess`.
+      final leaveId = (response['leave_id'] as num?)?.toInt() ?? 0;
+      setState(() => _submittedLeaveId = leaveId);
+    } catch (e, st) {
+      debugPrint('leave/apply failed: $e\n$st');
       if (mounted) setState(() => _error = _humanizeError(e));
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -443,13 +553,33 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
 
   @override
   Widget build(BuildContext context) {
+    // Two visual phases: form (pre-submit) and receipt (post-success).
+    // The form stays available on validation/network failures so the
+    // user can fix-and-retry; the receipt only takes over after the
+    // connector confirms creation and we know the leave id.
+    if (_submittedLeaveId != null) return _buildSuccess(context);
+    return _buildForm(context);
+  }
+
+  Widget _buildForm(BuildContext context) {
     final fmt = DateFormat('dd MMM yyyy');
-    return Padding(
+    // Bottom sum:
+    //   viewInsets.bottom  → keyboard inset (non-zero while keyboard open)
+    //   viewPadding.bottom → system nav / home-indicator inset
+    //   + 24               → visual gap above the SUBMIT button
+    // They never double-pad: when keyboard rises, viewPadding.bottom
+    // collapses to 0 (the keyboard consumes the bottom inset).
+    final mq = MediaQuery.of(context);
+    final balance = _balanceVisual(widget.leaveType, longForm: true);
+    // SingleChildScrollView (not Padding) so the form scrolls when
+    // the keyboard rises and pushes available height below the
+    // column's intrinsic size — otherwise the column would overflow.
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 24,
         right: 24,
         top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: mq.viewInsets.bottom + mq.viewPadding.bottom + 24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -460,6 +590,18 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
                   .textTheme
                   .titleMedium
                   ?.copyWith(fontWeight: FontWeight.w700)),
+          if (balance != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Text(
+                balance.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: balance.color,
+                ),
+              ),
+            ),
           if (widget.leaveType.mobileRequiresDocument)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -592,17 +734,150 @@ class _ApplyLeaveSheetState extends State<_ApplyLeaveSheet> {
             ),
           ],
           const SizedBox(height: 20),
+          PrimaryButton(
+            label: 'SUBMIT LEAVE',
+            loading: _submitting,
+            onPressed: _submitting ? null : _submit,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSuccess(BuildContext context) {
+    final mq = MediaQuery.of(context);
+    final session = context.read<SessionService>();
+    final fmt = DateFormat('dd MMM yyyy');
+    // Build a one-line dates blurb that matches the form's math —
+    // reuses _dayCountLabel / _hourLabel so the receipt agrees with
+    // what the user just saw.
+    String datesBlurb;
+    if (_isHourly) {
+      datesBlurb = '${fmt.format(_dateFrom)}  ·  $_hourLabel';
+    } else if (_isHalfDay) {
+      final period = '${_fromPeriod.toUpperCase()} → ${_toPeriod.toUpperCase()}';
+      datesBlurb = _isSameDate
+          ? '${fmt.format(_dateFrom)}  ·  $_dayCountLabel  ·  $period'
+          : '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  '
+              '·  $_dayCountLabel  ·  $period';
+    } else {
+      datesBlurb = _isSameDate
+          ? '${fmt.format(_dateFrom)}  ·  $_dayCountLabel'
+          : '${fmt.format(_dateFrom)} → ${fmt.format(_dateTo)}  '
+              '·  $_dayCountLabel';
+    }
+    final reason = _reasonController.text.trim();
+    final approver = session.employeeTimeOffApprover;
+    return SingleChildScrollView(
+      padding: EdgeInsets.only(
+        left: 24,
+        right: 24,
+        top: 24,
+        bottom: mq.viewInsets.bottom + mq.viewPadding.bottom + 24,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: AppTheme.primaryContainer.withValues(alpha: 0.15),
+              ),
+              child: Icon(
+                Icons.check_rounded,
+                color: AppTheme.primary,
+                size: 30,
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Center(
+            child: Text(
+              'Leave request submitted',
+              style: Theme.of(context)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w700),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Center(
+            child: Text(
+              'Waiting for approval',
+              style: TextStyle(
+                fontSize: 13,
+                color: AppTheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Divider(
+              height: 1,
+              color: AppTheme.outlineVariant.withValues(alpha: 0.6)),
+          const SizedBox(height: 16),
+          _summaryRow('Type', widget.leaveType.name),
+          _summaryRow('Dates', datesBlurb),
+          if (reason.isNotEmpty) _summaryRow('Reason', reason),
+          if (approver.isNotEmpty) _summaryRow('Approver', approver),
+          if (_submittedLeaveId != null && _submittedLeaveId! > 0)
+            _summaryRow('Reference', '#${_submittedLeaveId!}'),
+          const SizedBox(height: 24),
+          PrimaryButton(
+            label: 'DONE',
+            // Null pop result tells the parent: stay on the Leave tab.
+            onPressed: () => Navigator.of(context).pop(),
+          ),
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            icon: const Icon(Icons.history_rounded, size: 18),
+            label: const Text('VIEW IN HISTORY'),
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(48),
+              side: BorderSide(
+                color: AppTheme.outline.withValues(alpha: 0.5),
+              ),
+              foregroundColor: AppTheme.primary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(100),
+              ),
+            ),
+            onPressed: () =>
+                Navigator.of(context).pop(_submittedLeaveId),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: _submitting ? null : _submit,
-              child: _submitting
-                  ? const SizedBox(
-                      height: 20,
-                      width: 20,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white))
-                  : const Text('Submit Leave'),
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                letterSpacing: 0.4,
+                color: AppTheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],

@@ -23,11 +23,64 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
   bool _loading = true;
   String? _error;
   int? _expandedId;
+  // Set briefly when a notification deep-links to a specific leave —
+  // the matching card pulses with a tinted background and auto-
+  // expands. Cleared after ~2.5 s.
+  int? _highlightId;
+  final ScrollController _scrollController = ScrollController();
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => refresh());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  /// Scroll to a leave by id, expand its card, and flash a teal tint
+  /// behind it that fades over ~2.5 s. Triggered when the user taps a
+  /// "Leave approved/refused" notification.
+  Future<void> scrollToAndHighlight(int leaveId) async {
+    // Refresh first so a freshly-approved leave is in our list.
+    await refresh();
+    if (!mounted) return;
+    final index = _leaves.indexWhere((l) => l.id == leaveId);
+    if (index < 0) {
+      // Older than the 50-record cap — just show a hint and bail.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('That leave is older than the most recent 50 — '
+              'scroll the list to find it.'),
+        ),
+      );
+      return;
+    }
+    setState(() {
+      _expandedId = leaveId;
+      _highlightId = leaveId;
+    });
+    // Approximate scroll position. Cards are ~110 px collapsed and
+    // grow when the highlighted one auto-expands; 140 lands close
+    // enough on the iPhone-width canvas. Worst case the user scrolls
+    // a bit, but the highlight tint guides their eye.
+    final target = (index * 140.0).clamp(
+        0.0, _scrollController.position.maxScrollExtent);
+    if (_scrollController.hasClients) {
+      await _scrollController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+      );
+    }
+    await Future.delayed(const Duration(milliseconds: 2500));
+    if (!mounted) return;
+    if (_highlightId == leaveId) {
+      setState(() => _highlightId = null);
+    }
   }
 
   Future<void> refresh() async {
@@ -125,6 +178,11 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
     final saved = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
+      useSafeArea: true,
+      // Persistent bottom nav lives in HomeShell. Root navigator
+      // ensures the sheet overlays the bottom nav, not our tab's
+      // nested Navigator.
+      useRootNavigator: true,
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -135,31 +193,46 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('Leave History')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text(_error!))
-              : RefreshIndicator(
-                  onRefresh: refresh,
-                  child: _leaves.isEmpty
-                      ? ListView(children: const [
-                          SizedBox(height: 100),
-                          Center(child: Text('No leave records yet')),
-                        ])
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: _leaves.length,
-                          itemBuilder: (_, i) => _buildItem(_leaves[i]),
-                        ),
-                ),
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(child: Text(_error!));
+    }
+    return RefreshIndicator(
+      onRefresh: refresh,
+      child: _leaves.isEmpty
+          ? ListView(
+              controller: _scrollController,
+              children: const [
+                SizedBox(height: 100),
+                Center(child: Text('No leave records yet')),
+              ],
+            )
+          : ListView.builder(
+              controller: _scrollController,
+              padding: const EdgeInsets.all(16),
+              itemCount: _leaves.length,
+              itemBuilder: (_, i) => _buildItem(_leaves[i]),
+            ),
     );
   }
 
   Widget _buildItem(LeaveRecord r) {
     final expanded = _expandedId == r.id;
-    return Card(
+    final highlighted = _highlightId == r.id;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 600),
+      curve: Curves.easeOut,
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        color: highlighted
+            ? AppTheme.primaryContainer.withValues(alpha: 0.18)
+            : Colors.transparent,
+      ),
+      padding: const EdgeInsets.all(2),
+      child: Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(24),
         onTap: () => setState(
@@ -298,6 +371,7 @@ class LeaveHistoryScreenState extends State<LeaveHistoryScreen> {
             ],
           ),
         ),
+      ),
       ),
     );
   }
@@ -772,12 +846,16 @@ class _EditLeaveSheetState extends State<_EditLeaveSheet> {
   @override
   Widget build(BuildContext context) {
     final fmt = DateFormat('dd MMM yyyy');
-    return Padding(
+    final mq = MediaQuery.of(context);
+    // SingleChildScrollView so the form survives keyboard-up without
+    // overflow. viewPadding.bottom covers the persistent bottom nav's
+    // system-nav inset (we render past the nav via useRootNavigator).
+    return SingleChildScrollView(
       padding: EdgeInsets.only(
         left: 24,
         right: 24,
         top: 24,
-        bottom: MediaQuery.of(context).viewInsets.bottom + 24,
+        bottom: mq.viewInsets.bottom + mq.viewPadding.bottom + 24,
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,

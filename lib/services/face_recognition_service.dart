@@ -94,7 +94,7 @@ class FaceRecognitionService extends ChangeNotifier {
       _reenrollAllowed = res['face_reenroll_allowed'] == true;
       final lastStr = (res['last_enrolled_at'] ?? '').toString();
       _lastEnrolledAt = lastStr.isNotEmpty
-          ? DateTime.tryParse(lastStr.replaceFirst(' ', 'T') + 'Z')
+          ? DateTime.tryParse('${lastStr.replaceFirst(' ', 'T')}Z')
           : null;
       notifyListeners();
     } catch (_) {
@@ -166,15 +166,24 @@ class FaceRecognitionService extends ChangeNotifier {
   ///   ok=false, isError=false, score — quality passed, matching ran but
   ///                                    score was below threshold
   Future<FaceVerifyResult> verifyFace(String liveImagePath) async {
+    // Dev short-circuit: when simulateFaceRecognition is on we skip
+    // ALL gates (enrollment, ML Kit quality, identity match). The
+    // simulator has no camera so the capture screen passes us a
+    // fake path; trying to read it via ML Kit would error out and
+    // block check-in/out testing.
+    if (DevConstants.simulateFaceRecognition) {
+      return FaceVerifyResult.success(score: null, simulated: true);
+    }
+
     if (_enrolled != true || _localFacePath == null) {
       return FaceVerifyResult.notEnrolled();
     }
 
     await _ensureEnginesReady();
 
-    // Quality gate. Always real (ML Kit), regardless of simulate flag,
-    // so devs can test "no face / multiple faces / too small / eyes
-    // closed" rejections without disabling simulation.
+    // Quality gate. Always real (ML Kit) in production, so devs can
+    // test "no face / multiple faces / too small / eyes closed"
+    // rejections without disabling simulation.
     final quality = await _qualityEngine.checkQuality(liveImagePath);
     if (!quality.ok) {
       return FaceVerifyResult.qualityFail(quality);

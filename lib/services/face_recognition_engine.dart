@@ -284,11 +284,17 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
       return FaceQualityResult.fail(FaceQualityIssue.imageReadFailed);
     }
 
-    final input = InputImage.fromFilePath(imagePath);
+    // iOS saves camera JPEGs in sensor-native orientation with EXIF metadata
+    // describing the rotation. ML Kit's InputImage.fromFilePath on iOS does
+    // not reliably honor that EXIF — feeding the file directly produces a
+    // 90°-rotated frame and ML Kit reports zero faces. Bake the rotation
+    // into pixels first, then point ML Kit at the normalized file.
+    final normalizedPath = await _normalizeOrientation(imagePath);
+    final input = InputImage.fromFilePath(normalizedPath);
     final faces = await _detector.processImage(input);
 
     if (faces.isEmpty) {
-      debugPrint('ML Kit faces=0 result=noFace');
+      debugPrint('ML Kit faces=0 result=noFace path=$normalizedPath');
       return FaceQualityResult.fail(FaceQualityIssue.noFace);
     }
     if (faces.length > 1) {
@@ -300,8 +306,8 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
     final face = faces.first;
     // Bounding box width as a fraction of the image short side. We
     // don't have the image dimensions from ML Kit directly; pull them
-    // from the file.
-    final bytes = await f.readAsBytes();
+    // from the (normalized) file so the box-coords match.
+    final bytes = await File(normalizedPath).readAsBytes();
     final shortSide = await _imageShortSide(bytes);
     double? boxFraction;
     if (shortSide != null && shortSide > 0) {
@@ -352,11 +358,14 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
 
     // Detect the face so we can crop tightly. Embedding quality
     // collapses if we feed the whole frame (background dominates).
-    final input = InputImage.fromFilePath(imagePath);
+    // Use orientation-normalized image so ML Kit's bounding box aligns
+    // with the pixels we crop in img.copyCrop below.
+    final normalizedPath = await _normalizeOrientation(imagePath);
+    final input = InputImage.fromFilePath(normalizedPath);
     final faces = await _detector.processImage(input);
     if (faces.length != 1) return null;
 
-    final raw = await File(imagePath).readAsBytes();
+    final raw = await File(normalizedPath).readAsBytes();
     final decoded = img.decodeImage(raw);
     if (decoded == null) return null;
 
@@ -498,6 +507,31 @@ class MLKitFaceRecognitionEngine implements FaceRecognitionEngine {
     _embedder?.close();
     _embedder = null;
     _embedderTried = false;
+  }
+}
+
+/// Read [imagePath], apply EXIF orientation to the pixel buffer, and
+/// write the result to a sibling `<basename>_oriented.jpg`. Returns the
+/// new path. If decoding fails or no rotation is needed, returns the
+/// original path. iOS-only concern in practice — Android's camera
+/// plugin already bakes orientation into the JPEG.
+Future<String> _normalizeOrientation(String imagePath) async {
+  try {
+    final f = File(imagePath);
+    final bytes = await f.readAsBytes();
+    final decoded = img.decodeImage(bytes);
+    if (decoded == null) return imagePath;
+    final baked = img.bakeOrientation(decoded);
+    final outPath = '${imagePath}_oriented.jpg';
+    await File(outPath).writeAsBytes(img.encodeJpg(baked, quality: 92));
+    debugPrint(
+        'Face image normalized: ${decoded.width}x${decoded.height} → '
+        '${baked.width}x${baked.height}  out=$outPath');
+    return outPath;
+  } catch (e) {
+    debugPrint('_normalizeOrientation failed for $imagePath: $e — '
+        'using original');
+    return imagePath;
   }
 }
 

@@ -2,6 +2,7 @@ class CompanyInfo {
   final String companyCode;
   final String name;
   final String odooUrl;
+  final String database;
   final Map<String, bool> features;
   final String minimumAppVersion;
 
@@ -9,6 +10,7 @@ class CompanyInfo {
     required this.companyCode,
     required this.name,
     required this.odooUrl,
+    required this.database,
     required this.features,
     this.minimumAppVersion = '',
   });
@@ -22,6 +24,7 @@ class CompanyInfo {
       companyCode: client['company_code'] ?? '',
       name: client['name'] ?? '',
       odooUrl: client['odoo_url'] ?? '',
+      database: client['database'] ?? '',
       features: features,
       minimumAppVersion: client['minimum_app_version'] ?? '',
     );
