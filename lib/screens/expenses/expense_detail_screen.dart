@@ -186,7 +186,8 @@ class ExpenseDetailScreen extends StatelessWidget {
             const SizedBox(height: 24),
             _receiptHeader(),
             const SizedBox(height: 8),
-            for (final att in record.attachments) _attachmentCard(context, att),
+            for (final att in record.attachments)
+              _AttachmentCard(parent: this, att: att),
           ],
         ],
       ),
@@ -250,44 +251,10 @@ class ExpenseDetailScreen extends StatelessWidget {
     );
   }
 
-  Widget _attachmentCard(BuildContext context, ExpenseAttachment att) {
-    final session = context.read<SessionService>();
-    final api = OmniMobileApi(
-      baseUrl: session.clientUrl,
-      db: session.clientDb,
-      token: session.token,
-    );
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: FutureBuilder<Map<String, dynamic>>(
-        future: api.getExpenseAttachment(att.id),
-        builder: (context, snap) {
-          if (snap.connectionState != ConnectionState.done) {
-            return _placeholderCard(
-              child: const SizedBox(
-                height: 160,
-                child: Center(child: CircularProgressIndicator()),
-              ),
-            );
-          }
-          if (snap.hasError || snap.data == null) {
-            return _placeholderCard(
-              child: _fileFallback(
-                  context, att, dataB64: null,
-                  reason: 'Could not load receipt.'),
-            );
-          }
-          final dataB64 = snap.data!['data_b64']?.toString() ?? '';
-          if (att.isImage && dataB64.isNotEmpty) {
-            return _imagePreview(context, att, dataB64);
-          }
-          return _placeholderCard(
-            child: _fileFallback(context, att, dataB64: dataB64),
-          );
-        },
-      ),
-    );
-  }
+  // _attachmentCard was inlined here; rendering now lives in the
+  // private _AttachmentCard StatefulWidget below so each card owns
+  // its own cached Future. Without that, every parent rebuild (scroll,
+  // focus, etc.) triggered a fresh getExpenseAttachment network call.
 
   Widget _imagePreview(
       BuildContext context, ExpenseAttachment att, String dataB64) {
@@ -468,5 +435,70 @@ class ExpenseDetailScreen extends StatelessWidget {
       default:
         return AppTheme.onSurfaceVariant;
     }
+  }
+}
+
+/// Per-attachment renderer owning a single cached Future. The parent
+/// StatelessWidget can't memoize the future itself (no State to store
+/// it on), so wrapping each attachment in a State-backed widget gives
+/// us a stable Future across rebuilds. Parent rebuilds (scroll, focus,
+/// etc.) no longer refire `getExpenseAttachment`.
+class _AttachmentCard extends StatefulWidget {
+  final ExpenseDetailScreen parent;
+  final ExpenseAttachment att;
+  const _AttachmentCard({required this.parent, required this.att});
+
+  @override
+  State<_AttachmentCard> createState() => _AttachmentCardState();
+}
+
+class _AttachmentCardState extends State<_AttachmentCard> {
+  late Future<Map<String, dynamic>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    final session = context.read<SessionService>();
+    final api = OmniMobileApi(
+      baseUrl: session.clientUrl,
+      db: session.clientDb,
+      token: session.token,
+    );
+    _future = api.getExpenseAttachment(widget.att.id);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final att = widget.att;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: FutureBuilder<Map<String, dynamic>>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return widget.parent._placeholderCard(
+              child: const SizedBox(
+                height: 160,
+                child: Center(child: CircularProgressIndicator()),
+              ),
+            );
+          }
+          if (snap.hasError || snap.data == null) {
+            return widget.parent._placeholderCard(
+              child: widget.parent._fileFallback(
+                  context, att, dataB64: null,
+                  reason: 'Could not load receipt.'),
+            );
+          }
+          final dataB64 = snap.data!['data_b64']?.toString() ?? '';
+          if (att.isImage && dataB64.isNotEmpty) {
+            return widget.parent._imagePreview(context, att, dataB64);
+          }
+          return widget.parent._placeholderCard(
+            child: widget.parent._fileFallback(context, att, dataB64: dataB64),
+          );
+        },
+      ),
+    );
   }
 }

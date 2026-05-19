@@ -191,8 +191,10 @@ class HomeShellState extends State<HomeShell> {
     // lands on a clean HistoryShell view.
     _historyNavKey.currentState?.popUntil((r) => r.isFirst);
     setState(() => _index = 2);
-    // Wait one frame so HistoryShell is the visible IndexedStack child.
-    await Future.delayed(Duration.zero);
+    // Wait until the end of the next frame so the new IndexedStack
+    // child (HistoryShell) is built + laid out. `Future.delayed(zero)`
+    // is a single-microtask stopgap that races on complex trees.
+    await WidgetsBinding.instance.endOfFrame;
     await _historyKey.currentState?.openLeaveAndHighlight(leaveId);
   }
 
@@ -204,7 +206,7 @@ class HomeShellState extends State<HomeShell> {
   Future<void> navigateToExpense(int expenseId) async {
     _expensesNavKey.currentState?.popUntil((r) => r.isFirst);
     setState(() => _index = 3);
-    await Future.delayed(Duration.zero);
+    await WidgetsBinding.instance.endOfFrame;
     await _expensesKey.currentState?.refresh();
   }
 
