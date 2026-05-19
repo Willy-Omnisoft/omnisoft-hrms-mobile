@@ -49,19 +49,39 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Future<void> _writeTempFile() async {
     try {
       final bytes = base64Decode(widget.dataB64);
-      final dir = await getTemporaryDirectory();
+      // App cache dir (NOT temp): private to the app on all Android
+      // target SDKs. temp dir is world-readable on older targets.
+      final dir = await getApplicationCacheDirectory();
       // Sanitize as openBase64File does — keeps the filename
       // filesystem-safe across Android and iOS.
       final safeName = widget.filename
           .replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
       final file = File('${dir.path}/$safeName');
       await file.writeAsBytes(bytes, flush: true);
-      if (!mounted) return;
+      if (!mounted) {
+        // Lifecycle race — widget unmounted between decode and write
+        // completion. Clean up so we don't orphan the file.
+        await file.delete().catchError((_) => file);
+        return;
+      }
       setState(() => _filePath = file.path);
     } catch (e) {
       if (!mounted) return;
       setState(() => _error = e.toString());
     }
+  }
+
+  @override
+  void dispose() {
+    // Best-effort delete of the cached PDF — we don't want payslip
+    // PDFs accumulating in the app cache dir between sessions. If
+    // the OS GC'd it first or the user never reached _filePath set,
+    // the catchError swallows the missing-file error.
+    final p = _filePath;
+    if (p != null) {
+      File(p).delete().catchError((_) => File(p));
+    }
+    super.dispose();
   }
 
   Future<void> _openExternally() async {
