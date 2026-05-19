@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../services/saas_service.dart';
 import '../../services/session_service.dart';
+import '../../widgets/labeled_field.dart';
+import '../../widgets/primary_button.dart';
 
 /// Lets the user re-resolve the company (point at a different SaaS or
 /// switch company codes) without going through the full
@@ -47,13 +50,30 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
       setState(() => _error = 'Enter SaaS URL and Company Code.');
       return;
     }
+
+    final session = context.read<SessionService>();
+    // If the user edited either field AND they're currently signed in,
+    // resolving will likely yield a different client db / company code,
+    // which means clearSession() will fire and they'll be logged out.
+    // Warn before doing the destructive thing.
+    final fieldsEdited = saasUrl != session.saasUrl ||
+        code.toUpperCase() != session.companyCode.toUpperCase();
+    if (fieldsEdited && session.isLoggedIn) {
+      final ok = await _confirmSwitchCompany(
+        currentCode: session.companyCode,
+        currentSaasUrl: session.saasUrl,
+        newCode: code.toUpperCase(),
+        newSaasUrl: saasUrl,
+      );
+      if (ok != true) return;
+    }
+
     setState(() {
       _resolving = true;
       _error = null;
       _info = null;
     });
     try {
-      final session = context.read<SessionService>();
       final priorClientUrl = session.clientUrl;
       final priorCompanyCode = session.companyCode;
 
@@ -69,6 +89,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
         companyCode: info.companyCode,
         clientUrl: info.odooUrl,
         clientDb: info.database,
+        features: info.features,
       );
       if (changed) {
         await session.clearSession();
@@ -90,6 +111,107 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
     } finally {
       if (mounted) setState(() => _resolving = false);
     }
+  }
+
+  Future<bool?> _confirmSwitchCompany({
+    required String currentCode,
+    required String currentSaasUrl,
+    required String newCode,
+    required String newSaasUrl,
+  }) {
+    return showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Switch company?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Reconnecting will sign you out — you\'ll need to log in '
+              'with the new company\'s credentials.',
+              style: TextStyle(
+                color: AppTheme.onSurfaceVariant,
+                fontSize: 14,
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _diffRow(
+                label: 'Stay on',
+                code: currentCode,
+                url: currentSaasUrl),
+            const SizedBox(height: 8),
+            _diffRow(
+                label: 'Switch to',
+                code: newCode,
+                url: newSaasUrl,
+                emphasised: true),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+                backgroundColor: AppTheme.primary),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Switch company'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _diffRow({
+    required String label,
+    required String code,
+    required String url,
+    bool emphasised = false,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: emphasised
+            ? AppTheme.primaryContainer.withValues(alpha: 0.10)
+            : AppTheme.surfaceContainer,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 1.2,
+              color: emphasised
+                  ? AppTheme.primary
+                  : AppTheme.onSurfaceVariant,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            code.isEmpty ? '—' : code,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (url.isNotEmpty)
+            Text(
+              url,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppTheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _clearCompany() async {
@@ -124,6 +246,10 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Watch (not read) so the Clear branch reacts to session changes —
+    // e.g. invalid_session fires while the screen is open and the
+    // button needs to appear without a re-navigation.
+    final session = context.watch<SessionService>();
     return Scaffold(
       appBar: AppBar(
         title: const Text('Company Settings'),
@@ -141,21 +267,17 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     ),
               ),
               const SizedBox(height: 8),
-              TextField(
+              LabeledField(
+                label: 'SaaS URL',
                 controller: _saasUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'SaaS URL',
-                  prefixIcon: Icon(Icons.cloud_outlined),
-                ),
+                prefixIcon: Icons.cloud_outlined,
                 keyboardType: TextInputType.url,
               ),
-              const SizedBox(height: 12),
-              TextField(
+              const SizedBox(height: 16),
+              LabeledField(
+                label: 'Company Code',
                 controller: _codeController,
-                decoration: const InputDecoration(
-                  labelText: 'Company Code',
-                  prefixIcon: Icon(Icons.vpn_key_outlined),
-                ),
+                prefixIcon: Icons.vpn_key_outlined,
                 textCapitalization: TextCapitalization.characters,
               ),
               const SizedBox(height: 20),
@@ -184,32 +306,53 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                 _banner(_info!, AppTheme.primary, Icons.check_circle_outline),
               ],
               const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton.icon(
-                  icon: _resolving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(
-                              strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                  label: const Text('Resolve Company'),
-                  onPressed: _resolving ? null : _resolve,
-                ),
+              PrimaryButton(
+                label: 'RESOLVE COMPANY',
+                icon: _resolving ? null : Icons.refresh_rounded,
+                loading: _resolving,
+                onPressed: _resolving ? null : _resolve,
               ),
               const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Clear Company'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: AppTheme.error,
-                    side: BorderSide(color: AppTheme.error),
+              // Clear Company is a full reset (auth + SaaS routing).
+              // When the user is signed in we hide it entirely — they
+              // must Logout from Profile first, then come back here
+              // and clear from the logged-out state. This avoids the
+              // "I tapped clear and got logged out without realising"
+              // trap.
+              if (!session.isLoggedIn)
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('Clear Company'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppTheme.error,
+                      side: BorderSide(color: AppTheme.error),
+                    ),
+                    onPressed: _resolving ? null : _clearCompany,
                   ),
-                  onPressed: _resolving ? null : _clearCompany,
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Text(
+                    'Sign out from Profile first to clear the company.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppTheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 32),
+              Center(
+                child: Text(
+                  'App version ${AppConstants.appVersion}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.onSurfaceVariant,
+                    letterSpacing: 0.3,
+                  ),
                 ),
               ),
             ],

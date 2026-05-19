@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../core/constants.dart';
 import '../../core/theme.dart';
 import '../../services/device_service.dart';
 import '../../services/omni_mobile_api.dart';
 import '../../services/session_service.dart';
+import '../../widgets/brand_logo.dart';
+import '../../widgets/labeled_field.dart';
+import '../../widgets/primary_button.dart';
 import '../home/home_shell.dart';
 import 'company_settings_screen.dart';
 
@@ -74,6 +78,25 @@ class _LoginScreenState extends State<LoginScreen> {
         userName: user['name']?.toString() ?? '',
         employeeId: (employee['id'] as num?)?.toInt() ?? 0,
         employeeName: employee['name']?.toString() ?? '',
+        employeeAvatarB64: employee['avatar_b64']?.toString() ?? '',
+        employeeJobTitle: employee['job_title']?.toString() ?? '',
+        employeeJobPosition: employee['job_position']?.toString() ?? '',
+        employeeDepartment: employee['department_name']?.toString() ?? '',
+        employeeManager: employee['manager_name']?.toString() ?? '',
+        employeeWorkEmail: employee['work_email']?.toString() ?? '',
+        employeeWorkPhone: employee['work_phone']?.toString() ?? '',
+        employeeCompanyName:
+            employee['company_name']?.toString() ?? '',
+        employeeCompanyLogoB64:
+            employee['company_logo_b64']?.toString() ?? '',
+        employeeHrApprover:
+            employee['hr_approver_name']?.toString() ?? '',
+        employeeTimeOffApprover:
+            employee['time_off_approver_name']?.toString() ?? '',
+        employeeAttendanceApprover:
+            employee['attendance_approver_name']?.toString() ?? '',
+        employeeExpenseApprover:
+            employee['expense_approver_name']?.toString() ?? '',
       );
       if (!mounted) return;
       Navigator.of(context).pushAndRemoveUntil(
@@ -99,10 +122,16 @@ class _LoginScreenState extends State<LoginScreen> {
         return 'No employee record is linked to that user.';
       case 'mobile_not_enabled':
         return 'Mobile access is not enabled for this employee. Ask HR to enable it.';
+      case 'seat_limit_exceeded':
+        return 'Your organization has reached its mobile seat limit. '
+            'Contact your administrator to request access.';
       case 'rate_limit_exceeded':
         return 'Too many login attempts. Try again in a few minutes.';
       default:
-        return e.errorCode.isEmpty ? 'Login failed.' : e.errorCode;
+        // Friendly fallback for any error code we haven't explicitly
+        // mapped — keeps cryptic snake_case codes off the UI.
+        return 'Login failed. Please try again or contact your '
+            'administrator.';
     }
   }
 
@@ -112,9 +141,6 @@ class _LoginScreenState extends State<LoginScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Sign In'),
-        // Suppress the implicit back arrow — there's nothing to go back
-        // to here (CompanyCodeScreen was pushReplacement'd). The gear
-        // action below is the deliberate way to change company.
         automaticallyImplyLeading: false,
         actions: [
           IconButton(
@@ -129,126 +155,145 @@ class _LoginScreenState extends State<LoginScreen> {
         ],
       ),
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primary,
-                    borderRadius: BorderRadius.circular(24),
-                  ),
-                  child: const Icon(
-                    Icons.lock_outline_rounded,
-                    color: Colors.white,
-                    size: 40,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  AppConstants.appName,
-                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.primary,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SingleChildScrollView(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                    minHeight: constraints.maxHeight - 48),
+                child: IntrinsicHeight(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const SizedBox(height: 16),
+                      // Branding block
+                      Center(
+                        child: Column(
+                          children: [
+                            const BrandLogo.large(),
+                            const SizedBox(height: 24),
+                            Text(
+                              session.companyCode.isNotEmpty
+                                  ? session.companyCode
+                                  : AppConstants.appName,
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .displaySmall
+                                  ?.copyWith(color: AppTheme.onSurface),
+                            ),
+                            if (session.clientUrl.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                session.clientUrl,
+                                style: GoogleFonts.inter(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppTheme.primaryContainer,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ],
+                            if (session.clientDb.isNotEmpty) ...[
+                              const SizedBox(height: 4),
+                              Text(
+                                session.clientDb,
+                                style: GoogleFonts.firaCode(
+                                  fontSize: 11,
+                                  fontStyle: FontStyle.italic,
+                                  color: AppTheme.outline,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
                       ),
-                ),
-                const SizedBox(height: 4),
-                if (session.companyCode.isNotEmpty)
-                  Text(
-                    '${session.companyCode}  ·  ${session.clientUrl}',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.onSurfaceVariant,
+                      const SizedBox(height: 40),
+                      // Form
+                      LabeledField(
+                        label: 'Email or login',
+                        controller: _loginController,
+                        prefixIcon: Icons.mail_outline_rounded,
+                        keyboardType: TextInputType.emailAddress,
+                        autofillHints: const [AutofillHints.email],
+                        textInputAction: TextInputAction.next,
+                      ),
+                      const SizedBox(height: 20),
+                      LabeledField(
+                        label: 'Password',
+                        controller: _passwordController,
+                        prefixIcon: Icons.lock_outline_rounded,
+                        obscureText: _obscurePassword,
+                        autofillHints: const [AutofillHints.password],
+                        textInputAction: TextInputAction.done,
+                        onSubmitted: (_) => _login(),
+                        suffix: IconButton(
+                          tooltip: _obscurePassword
+                              ? 'Show password'
+                              : 'Hide password',
+                          icon: Icon(_obscurePassword
+                              ? Icons.visibility_outlined
+                              : Icons.visibility_off_outlined),
+                          onPressed: () => setState(
+                              () => _obscurePassword = !_obscurePassword),
                         ),
-                  ),
-                if (session.clientDb.isNotEmpty) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    session.clientDb,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppTheme.onSurfaceVariant,
-                          fontSize: 11,
-                        ),
-                  ),
-                ],
-                const SizedBox(height: 32),
-                TextField(
-                  controller: _loginController,
-                  decoration: const InputDecoration(
-                    labelText: 'Email or login',
-                    prefixIcon: Icon(Icons.email_outlined),
-                  ),
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  textInputAction: TextInputAction.next,
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: _passwordController,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.password_outlined),
-                    suffixIcon: IconButton(
-                      icon: Icon(_obscurePassword
-                          ? Icons.visibility_outlined
-                          : Icons.visibility_off_outlined),
-                      onPressed: () => setState(
-                          () => _obscurePassword = !_obscurePassword),
-                    ),
-                  ),
-                  obscureText: _obscurePassword,
-                  autofillHints: const [AutofillHints.password],
-                  textInputAction: TextInputAction.done,
-                  onSubmitted: (_) => _login(),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: AppTheme.error.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.error_outline,
-                            color: AppTheme.error, size: 18),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: TextStyle(
-                                color: AppTheme.error, fontSize: 13),
+                      ),
+                      if (_error != null) ...[
+                        const SizedBox(height: 16),
+                        _errorBanner(_error!),
+                      ],
+                      const SizedBox(height: 28),
+                      PrimaryButton(
+                        label: 'SIGN IN',
+                        loading: _submitting,
+                        onPressed: _submitting ? null : _login,
+                      ),
+                      // Push the footer to the bottom of the safe area.
+                      const Spacer(),
+                      const SizedBox(height: 24),
+                      Center(
+                        child: Text(
+                          'POWERED BY OMNISOFT TECHNOLOGIES',
+                          style: GoogleFonts.inter(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 4,
+                            color: AppTheme.outline.withValues(alpha: 0.7),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                ],
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: _submitting ? null : _login,
-                    child: _submitting
-                        ? const SizedBox(
-                            height: 20,
-                            width: 20,
-                            child: CircularProgressIndicator(
-                                strokeWidth: 2, color: Colors.white),
-                          )
-                        : const Text('Sign In'),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
                   ),
                 ),
-              ],
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _errorBanner(String text) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.error.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: AppTheme.error, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(color: AppTheme.error, fontSize: 13),
             ),
           ),
-        ),
+        ],
       ),
     );
   }

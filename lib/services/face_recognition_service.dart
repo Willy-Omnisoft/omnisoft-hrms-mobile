@@ -94,7 +94,7 @@ class FaceRecognitionService extends ChangeNotifier {
       _reenrollAllowed = res['face_reenroll_allowed'] == true;
       final lastStr = (res['last_enrolled_at'] ?? '').toString();
       _lastEnrolledAt = lastStr.isNotEmpty
-          ? DateTime.tryParse(lastStr.replaceFirst(' ', 'T') + 'Z')
+          ? DateTime.tryParse('${lastStr.replaceFirst(' ', 'T')}Z')
           : null;
       notifyListeners();
     } catch (_) {

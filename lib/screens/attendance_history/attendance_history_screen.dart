@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../core/theme.dart';
@@ -72,15 +73,35 @@ class AttendanceHistoryScreenState extends State<AttendanceHistoryScreen> {
     return RefreshIndicator(
       onRefresh: refresh,
       child: _records.isEmpty
-          ? ListView(children: const [
-              SizedBox(height: 100),
-              Center(child: Text('No attendance records yet')),
+          ? ListView(children: [
+              const SizedBox(height: 100),
+              const Center(child: Text('No attendance records yet')),
+              const SizedBox(height: 24),
+              _scopeFooter(),
             ])
           : ListView.builder(
               padding: const EdgeInsets.all(16),
-              itemCount: _records.length,
-              itemBuilder: (_, i) => _buildItem(_records[i]),
+              // +1 row for the "Showing the last 30 days" footer.
+              itemCount: _records.length + 1,
+              itemBuilder: (_, i) => i == _records.length
+                  ? _scopeFooter()
+                  : _buildItem(_records[i]),
             ),
+    );
+  }
+
+  Widget _scopeFooter() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 8, 0, 24),
+      child: Center(
+        child: Text(
+          'Showing the last 30 days',
+          style: GoogleFonts.inter(
+            fontSize: 12,
+            color: AppTheme.outline,
+          ),
+        ),
+      ),
     );
   }
 

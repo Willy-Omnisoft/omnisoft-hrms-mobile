@@ -36,5 +36,13 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- Disable Impeller (Vulkan) and use Skia instead. flutter_pdfview
+             (AndroidView platform view) renders blank/transparent when
+             composited through Impeller on this device. Skia handles
+             AndroidView correctly. Revisit if Flutter deprecates Skia or
+             we migrate the PDF viewer to a Texture-based renderer (pdfrx). -->
+        <meta-data
+            android:name="io.flutter.embedding.android.EnableImpeller"
+            android:value="false" />
     </application>
 </manifest>

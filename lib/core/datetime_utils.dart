@@ -50,4 +50,30 @@ class DateTimeUtils {
       return value;
     }
   }
+
+  /// Relative-ish label for a submission timestamp. Used as the
+  /// primary date on list cards where "when did I submit this" is
+  /// the dominant question (vs. when the receipt was issued):
+  ///   • today           → "Submitted today"
+  ///   • yesterday       → "Submitted yesterday"
+  ///   • within 7 days   → "Submitted Nd ago"
+  ///   • within 1 year   → "Submitted 27 Apr"
+  ///   • older           → "Submitted 27 Apr 2024"
+  /// Accepts the Odoo "yyyy-MM-dd HH:mm:ss" UTC shape via parseOdooUtc.
+  static String formatSubmittedAgo(String? value) {
+    final dt = parseOdooUtc(value);
+    if (dt == null) return '';
+    final local = dt.toLocal();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final d = DateTime(local.year, local.month, local.day);
+    final delta = today.difference(d).inDays;
+    if (delta == 0) return 'Submitted today';
+    if (delta == 1) return 'Submitted yesterday';
+    if (delta < 7) return 'Submitted ${delta}d ago';
+    if (local.year == now.year) {
+      return 'Submitted ${DateFormat('d MMM').format(local)}';
+    }
+    return 'Submitted ${DateFormat('d MMM yyyy').format(local)}';
+  }
 }
